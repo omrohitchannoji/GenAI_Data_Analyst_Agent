@@ -136,9 +136,18 @@ FACT SUMMARY:
 
     text = clean_llm_text(raw)
 
+    # Try strict JSON first
     try:
-        parsed = json.loads(text)
-        return parsed
+        return json.loads(text)
     except Exception:
-        print("⚠️ Failed to parse explanation JSON → using fallback.")
+        pass
+
+    # Try to extract JSON block if LLM added extra text
+    try:
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ JSON parse failed → using fallback")
         return fallback
