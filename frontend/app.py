@@ -80,7 +80,18 @@ with tab1:
                     files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
                 )
 
-            data = resp.json()
+            if resp.status_code != 200:
+                st.error(f"Backend error ({resp.status_code})")
+                st.text(resp.text)
+                st.stop()
+
+            try:
+                data = resp.json()
+            except Exception:
+                st.error("Backend returned non-JSON response (likely waking up). Please retry.")
+                st.text(resp.text)
+                st.stop()
+
 
             if "error" in data:
                 st.error(data["error"])
