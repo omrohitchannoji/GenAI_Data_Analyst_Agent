@@ -82,8 +82,18 @@ def call_llm(prompt):
 
         if resp.status_code != 200:
             return None
-
+        
+        if '"error"' in resp.text.lower():
+            print("⚠️ Groq returned error payload despite 200 status.")
+            return None
+        
         data = resp.json()
+
+        # defensive parsing
+        choices = data.get("choices")
+        if not choices:
+            return None
+        
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
