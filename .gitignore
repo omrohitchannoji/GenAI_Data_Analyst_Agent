@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+uploaded_data.db
+mlruns/
+.streamlit/
+.vscode/
