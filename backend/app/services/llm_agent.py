@@ -4,17 +4,18 @@ import os
 import json
 import requests
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.1-8b-instant"
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+MODEL = "gpt-4o-mini"
 
 HEADERS = {
-    "Authorization": f"Bearer {GROQ_API_KEY}",
+    "Authorization": f"Bearer {OPENAI_API_KEY}",
     "Content-Type": "application/json"
 }
 
 LLM_PROMPT_TEMPLATE = """
-You are a Senior Data Analyst at a top consulting firm (McKinsey / BCG / Deloitte).  
+You are a Senior Data Analyst at a top consulting firm (McKinsey / BCG / Deloitte).
 Your job is to produce a clear, highly professional analytical summary based strictly on the provided SQL results and facts.
 
 You MUST return STRICT JSON with the following structure:
@@ -46,71 +47,54 @@ SQL Used:
 Data Facts:
 {facts}
 
-Produce ONLY valid JSON. 
+Produce ONLY valid JSON.
 No markdown, no commentary, no extra text.
 """
 
 
-def clean_llm_text(text: str):
-    """Remove unwanted markdown fences or text."""
-    if not text:
-        return ""
-
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.replace("```json", "").replace("```", "").strip()
-
-    return text
-
-
-def call_llm(prompt):
-    """Send request to Groq and return raw content."""
-    if not GROQ_API_KEY:
-        print("⚠️ Missing GROQ_API_KEY → using fallback.")
+def call_llm(prompt: str):
+    if not OPENAI_API_KEY:
+        print("⚠️ OPENAI_API_KEY missing → using fallback.")
         return None
 
     payload = {
         "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
         "temperature": 0.2,
-        "max_tokens": 350
+        "max_tokens": 300
     }
 
     try:
-        resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=20)
-        print("🔥 RAW LLM EXPLANATION RESPONSE:", resp.text[:600])
+        resp = requests.post(
+            OPENAI_URL,
+            headers=HEADERS,
+            json=payload,
+            timeout=30
+        )
 
         if resp.status_code != 200:
+            print("❌ OpenAI error:", resp.text)
             return None
 
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        print("❌ LLM agent error:", str(e))
+        print("❌ OpenAI request failed:", str(e))
         return None
 
 
 def generate_llm_explanation(question: str, sql: str, facts: str):
-    """
-    Main public function. Returns explanation JSON.
-    """
-
-    prompt = LLM_PROMPT_TEMPLATE + f"""
-
-QUESTION:
-{question}
-
-SQL EXECUTED:
-{sql}
-
-FACT SUMMARY:
-{facts}
-"""
+    prompt = LLM_PROMPT_TEMPLATE.format(
+        question=question,
+        sql=sql,
+        facts=facts
+    )
 
     raw = call_llm(prompt)
 
-    # Fallback narrative (used if LLM fails or JSON is invalid)
     fallback = {
         "executive_summary": "The analysis reveals meaningful differences across groups with identifiable trends.",
         "key_observations": [
@@ -124,11 +108,8 @@ FACT SUMMARY:
     if not raw:
         return fallback
 
-    text = clean_llm_text(raw)
-
     try:
-        parsed = json.loads(text)
-        return parsed
+        return json.loads(raw)
     except Exception:
-        print("⚠️ Failed to parse explanation JSON → using fallback.")
+        print("⚠️ Failed to parse LLM JSON. Raw output:", raw[:300])
         return fallback
