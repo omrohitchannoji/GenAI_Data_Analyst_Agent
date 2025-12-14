@@ -155,23 +155,6 @@ GROQ_API_KEY=your_api_key_here
 
 ---
 
-## 💼 Why This Project Stands Out
-
-✔ Demonstrates **end-to-end GenAI system design**
-✔ Uses **LLMs responsibly** (guardrails + fallbacks)
-✔ Shows **real analytical thinking**, not just prompts
-✔ Production-deployed, not notebook-only
-✔ Easy to explain in interviews
-
-This project is suitable for roles such as:
-
-* AI Engineer
-* ML Engineer
-* Data Scientist
-* Analytics Engineer
-
----
-
 ## 📝 Future Enhancements
 
 * MLflow experiment tracking
