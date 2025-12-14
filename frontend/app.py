@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import requests
 
-BACKEND_URL = "https://genai-data-analyst-agent.onrender.com"
+BACKEND_URL = "http://localhost:8000"
 
 # ------------------------------------------------------------
 # PAGE CONFIG
@@ -229,4 +229,4 @@ with tab3:
     # SECTION: AI Narrative
     # -----------------------------
     st.markdown("### 🤖 AI Explanation")
-    st.write(insights.get("llm_explanation", "No explanation available."))
+    st.text(insights.get("llm_explanation", "No explanation available."))
