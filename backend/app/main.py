@@ -212,7 +212,8 @@ def insights_endpoint(request: UserQuery):
     facts_list = insights.get("insights", [])
     facts_text = "\n".join(f"- {item}" for item in facts_list)
     facts_text += "\nColumn Types:" + str(stored_column_types)
-    
+    facts_text += "\nSuggested Chart:" + str(insights.get("llm_chart"))
+
     # Call LLM for structured narrative (Phase 3)
     try:
         llm_raw = generate_llm_explanation(
