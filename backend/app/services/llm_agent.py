@@ -1,16 +1,13 @@
-# backend/app/services/llm_agent.py
-
 import os
 import json
 import requests
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-MODEL = "gpt-4o-mini"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama-3.1-8b-instant"
 
 HEADERS = {
-    "Authorization": f"Bearer {OPENAI_API_KEY}",
+    "Authorization": f"Bearer {GROQ_API_KEY}",
     "Content-Type": "application/json"
 }
 
@@ -51,40 +48,45 @@ Produce ONLY valid JSON.
 No markdown, no commentary, no extra text.
 """
 
-
 def call_llm(prompt: str):
-    if not OPENAI_API_KEY:
-        print("⚠️ OPENAI_API_KEY missing → using fallback.")
+    if not GROQ_API_KEY:
+        print(" GROQ_API_KEY missing → using fallback.")
         return None
 
     payload = {
         "model": MODEL,
         "messages": [
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a strict JSON generator. Output JSON only."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
         ],
         "temperature": 0.2,
-        "max_tokens": 300
+        "max_tokens": 250   # SAFE for free tier
     }
 
     try:
         resp = requests.post(
-            OPENAI_URL,
+            GROQ_URL,
             headers=HEADERS,
             json=payload,
-            timeout=30
+            timeout=25
         )
 
         if resp.status_code != 200:
-            print("❌ OpenAI error:", resp.text)
+            print(" Groq error:", resp.text[:300])
             return None
 
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        print("❌ OpenAI request failed:", str(e))
+        print(" Groq request failed:", str(e))
         return None
-
 
 def generate_llm_explanation(question: str, sql: str, facts: str):
     prompt = LLM_PROMPT_TEMPLATE.format(
@@ -96,13 +98,13 @@ def generate_llm_explanation(question: str, sql: str, facts: str):
     raw = call_llm(prompt)
 
     fallback = {
-        "executive_summary": "The analysis reveals meaningful differences across groups with identifiable trends.",
+        "executive_summary": "The analysis highlights meaningful differences across groups based on the queried metrics.",
         "key_observations": [
             "Top-performing groups outperform the median values.",
-            "Overall distribution appears stable with limited variance.",
-            "Minor anomalies or outliers may be worth further investigation."
+            "Overall distribution shows limited variance across groups.",
+            "A small number of groups may warrant further investigation."
         ],
-        "recommendation": "Investigate top groups to identify best practices; focus interventions on lower-performing groups."
+        "recommendation": "Analyze top performers to identify best practices and address gaps in lower-performing groups."
     }
 
     if not raw:
@@ -111,5 +113,5 @@ def generate_llm_explanation(question: str, sql: str, facts: str):
     try:
         return json.loads(raw)
     except Exception:
-        print("⚠️ Failed to parse LLM JSON. Raw output:", raw[:300])
+        print(" Failed to parse Groq JSON. Raw output:", raw[:300])
         return fallback
