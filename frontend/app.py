@@ -3,17 +3,35 @@ import pandas as pd
 import plotly.express as px
 import requests
 
+# ============================================================
+# CONFIG
+# ============================================================
 BACKEND_URL = "https://genai-data-analyst-agent.onrender.com"
 
-st.set_page_config(page_title="AI Data Analyst", page_icon="📊", layout="wide")
+st.set_page_config(
+    page_title="AI Data Analyst",
+    page_icon="📊",
+    layout="wide"
+)
 
+# ============================================================
+# BACKEND WARM-UP (CRITICAL FOR RENDER)
+# ============================================================
+st.info(
+    "🚀 This demo uses a free-tier backend. "
+    "On first load, the backend may take ~20–40 seconds to wake up."
+)
+
+try:
+    requests.get(f"{BACKEND_URL}/docs", timeout=5)
+except:
+    pass
+
+# ============================================================
+# STYLES
+# ============================================================
 st.markdown("""
 <style>
-
-body {
-    font-family: 'Inter', sans-serif;
-}
-
 .section-box {
     padding: 25px;
     background-color: #1e1e1e;
@@ -21,7 +39,6 @@ body {
     margin-bottom: 25px;
     border: 1px solid #333;
 }
-
 .metric-card {
     padding: 18px;
     border-radius: 10px;
@@ -29,184 +46,198 @@ body {
     border: 1px solid #333;
     text-align: center;
 }
-
-.metric-card h3 {
-    font-size: 20px;
-    margin-bottom: 5px;
-}
-
 .metric-value {
     font-size: 28px;
     font-weight: bold;
     color: #4CAF50;
 }
-
-hr {
-    margin-top: 40px;
-    margin-bottom: 40px;
-}
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# HEADER
+# ============================================================
 st.title("📊 AI Data Analyst Agent")
 st.caption("Upload → Ask → Analyze → Visualize → Explain")
 
-st.info(
-    "🚀 This live demo uses a free-tier backend. "
-    "On first use, the backend may take 20–40 seconds to wake up. "
-    "If an action fails initially, please wait briefly and try once more."
-)
+# ============================================================
+# TABS
+# ============================================================
+tab1, tab2, tab3 = st.tabs([
+    "📁 Upload Dataset",
+    "💬 Ask Questions",
+    "📊 Analysis Dashboard"
+])
 
-with st.spinner("Waking up backend..."):
-    try:
-        requests.get(f"{BACKEND_URL}/docs", timeout=5)
-    except:
-        pass
-
-tab1, tab2, tab3 = st.tabs(["📁 Upload Dataset", "💬 Ask Questions", "📊 Analysis Dashboard"])
-
+# ============================================================
+# TAB 1 — UPLOAD DATASET
+# ============================================================
 with tab1:
-    st.markdown("### 📁 Upload Your CSV Dataset")
-    with st.container():
-        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    st.subheader("📁 Upload CSV Dataset")
 
-        if uploaded_file:
-            with st.spinner("Processing dataset..."):
-                resp = requests.post(
-                    f"{BACKEND_URL}/upload_csv",
-                    files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
-                )
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
+    if uploaded_file:
+        with st.spinner("Uploading dataset..."):
+            resp = requests.post(
+                f"{BACKEND_URL}/upload_csv",
+                files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")},
+                timeout=30
+            )
+
+        if resp.status_code != 200:
+            st.warning(
+                "⏳ Backend is still starting. "
+                "Please wait ~20 seconds and upload again."
+            )
+            st.stop()
+
+        try:
             data = resp.json()
+        except ValueError:
+            st.warning(
+                "⏳ Backend is waking up. "
+                "Please retry the upload once."
+            )
+            st.stop()
 
-            if "error" in data:
-                st.error(data["error"])
-                st.stop()
+        if "error" in data:
+            st.error(data["error"])
+            st.stop()
 
-            st.success("Dataset uploaded successfully!")
+        st.success("Dataset uploaded successfully!")
 
-            st.markdown("#### 🔍 Preview")
-            st.dataframe(pd.DataFrame(data["preview"]))
+        st.subheader("🔍 Preview")
+        st.dataframe(pd.DataFrame(data["preview"]))
 
-            st.markdown("#### 🧬 Column Types Detected")
-            st.json(data["column_types"])
+        st.subheader("🧬 Column Types")
+        st.json(data["column_types"])
 
+        st.session_state["uploaded"] = True
+
+# ============================================================
+# TAB 2 — ASK QUESTIONS
+# ============================================================
 with tab2:
-    st.markdown("### 💬 Ask a Business Question")
-    st.markdown("Enter natural language questions such as:")
-    st.markdown("- *average daily rate by department*")
-    st.markdown("- *count employees by job role*")
-    st.markdown("- *max salary by education level*")
-    st.markdown("---")
+    st.subheader("💬 Ask a Business Question")
 
-    question = st.text_input("Ask your question:", placeholder="e.g., average daily rate by department")
-    run_btn = st.button("🚀 Run Analysis")
+    if not st.session_state.get("uploaded"):
+        st.info("Upload a dataset first.")
+        st.stop()
 
-    if run_btn:
-        if not uploaded_file:
-            st.error("Please upload a dataset first.")
-            st.stop()
+    question = st.text_input(
+        "Enter your question",
+        placeholder="e.g., average daily rate by department"
+    )
 
+    if st.button("🚀 Run Analysis"):
         if not question.strip():
-            st.error("Enter a question first.")
+            st.warning("Please enter a question.")
             st.stop()
 
-        # 1. CALL /ask_data
+        # ----------------------------
+        # CALL /ask_data
+        # ----------------------------
         with st.spinner("Generating SQL & running query..."):
-            ask_resp = requests.post(
+            resp = requests.post(
                 f"{BACKEND_URL}/ask_data",
-                json={"question": question}
-            ).json()
+                json={"question": question},
+                timeout=30
+            )
+
+        if resp.status_code != 200:
+            st.warning("⏳ Backend is starting. Please retry.")
+            st.stop()
+
+        try:
+            ask_resp = resp.json()
+        except ValueError:
+            st.warning("⏳ Backend response not ready. Please retry.")
+            st.stop()
 
         if "error" in ask_resp:
             st.error(ask_resp["error"])
             st.code(ask_resp.get("generated_sql", ""))
             st.stop()
 
-        df_results = pd.DataFrame(ask_resp["rows"])
-
-        st.markdown("### 🧾 SQL Generated")
+        df = pd.DataFrame(ask_resp["rows"])
         st.code(ask_resp["generated_sql"])
+        st.dataframe(df)
 
-        st.markdown("### 📊 Query Results")
-        st.dataframe(df_results)
+        st.session_state["analysis_df"] = df
 
-        st.session_state["analysis_df"] = df_results
-
-        # 2. CALL /insights
-        with st.spinner("Generating insights + AI explanation..."):
-            insights = requests.post(
+        # ----------------------------
+        # CALL /insights
+        # ----------------------------
+        with st.spinner("Generating insights & explanation..."):
+            resp = requests.post(
                 f"{BACKEND_URL}/insights",
-                json={"question": question}
-            ).json()
+                json={"question": question},
+                timeout=30
+            )
+
+        if resp.status_code != 200:
+            st.warning("⏳ Backend is starting. Please retry.")
+            st.stop()
+
+        try:
+            insights = resp.json()
+        except ValueError:
+            st.warning("⏳ Backend response not ready. Please retry.")
+            st.stop()
 
         st.session_state["insights"] = insights
+        st.success("Analysis complete! Go to Analysis Dashboard →")
 
-        st.success("Analysis complete! Go to **Analysis Dashboard** tab →")
-
-# TAB 3 — Results + Insights + LLM Narrative
+# ============================================================
+# TAB 3 — DASHBOARD
+# ============================================================
 with tab3:
-
     if "analysis_df" not in st.session_state:
-        st.info("Run an analysis first from the **Ask Questions** tab.")
+        st.info("Run an analysis first.")
         st.stop()
 
     df = st.session_state["analysis_df"]
     insights = st.session_state["insights"]
 
-    # SECTION: Metrics Cards
-    st.markdown("### 📌 Key Metrics")
+    st.subheader("📌 Key Metrics")
+    c1, c2, c3 = st.columns(3)
 
-    col1, col2, col3 = st.columns(3)
+    with c1:
+        st.markdown(
+            f"<div class='metric-card'>Rows<br><div class='metric-value'>{len(df)}</div></div>",
+            unsafe_allow_html=True
+        )
+    with c2:
+        st.markdown(
+            f"<div class='metric-card'>Columns<br><div class='metric-value'>{df.shape[1]}</div></div>",
+            unsafe_allow_html=True
+        )
+    with c3:
+        st.markdown(
+            f"<div class='metric-card'>Chart<br><div class='metric-value'>{insights.get('suggested_chart','N/A')}</div></div>",
+            unsafe_allow_html=True
+        )
 
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Rows Returned</h3>
-            <div class="metric-value">{len(df)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Columns</h3>
-            <div class="metric-value">{df.shape[1]}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Chart Suggested</h3>
-            <div class="metric-value">{insights.get("suggested_chart", "N/A").upper()}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # SECTION: Visualization
-    st.markdown("### 📈 Visualization")
-
-    chart_type = insights.get("suggested_chart")
+    st.subheader("📈 Visualization")
+    chart = insights.get("suggested_chart")
     details = insights.get("details", {})
 
-    if chart_type == "bar":
-        x = details.get("group_column")
-        y = details.get("value_column")
-
-        fig = px.bar(df, x=x, y=y, color=x, title="Bar Chart")
+    if chart == "bar":
+        fig = px.bar(
+            df,
+            x=details.get("group_column"),
+            y=details.get("value_column")
+        )
         st.plotly_chart(fig, use_container_width=True)
-
-    elif chart_type == "kpi":
-        st.metric("KPI Value", round(details.get("value", 0), 2))
-
+    elif chart == "kpi":
+        st.metric("KPI", round(details.get("value", 0), 2))
     else:
         st.dataframe(df)
 
-    # SECTION: Insights
-    st.markdown("### 💡 Insights Generated")
-    for b in insights.get("insights", []):
-        st.markdown(f"- {b}")
+    st.subheader("💡 Insights")
+    for i in insights.get("insights", []):
+        st.markdown(f"- {i}")
 
-    # SECTION: AI Narrative
-    st.markdown("### 🤖 AI Explanation")
+    st.subheader("🤖 AI Explanation")
     st.text(insights.get("llm_explanation", "No explanation available."))
