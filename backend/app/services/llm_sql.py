@@ -1,3 +1,5 @@
+# backend/app/services/llm_sql.py
+
 import os
 import requests
 
@@ -31,6 +33,10 @@ Columns: {columns}
 Question: {question}
 """
 
+
+# ---------------------------------------------------------
+# CLEAN SQL TEXT (removes markdown, fences, comments)
+# ---------------------------------------------------------
 def clean_sql(text: str) -> str:
     if not text:
         return ""
@@ -56,9 +62,12 @@ def clean_sql(text: str) -> str:
     return text.strip()
 
 
+# ---------------------------------------------------------
+# CORE LLM CALL (returns raw text)
+# ---------------------------------------------------------
 def call_llm_for_sql(question, schema_cols):
     if not GROQ_API_KEY:
-        print(" LLM SQL: Missing GROQ_API_KEY → returning None")
+        print("⚠️ LLM SQL: Missing GROQ_API_KEY → returning None")
         return None
 
     prompt = SQL_PROMPT_TEMPLATE.format(
@@ -76,8 +85,8 @@ def call_llm_for_sql(question, schema_cols):
     try:
         resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=30)
 
-        print(" LLM SQL Status:", resp.status_code)
-        print(" LLM SQL Raw Response:", resp.text[:500])
+        print("🔥 LLM SQL Status:", resp.status_code)
+        print("🔥 LLM SQL Raw Response:", resp.text[:500])
 
         if resp.status_code != 200:
             return None
@@ -90,9 +99,13 @@ def call_llm_for_sql(question, schema_cols):
         return choices[0]["message"]["content"]
 
     except Exception as e:
-        print(" LLM SQL Exception:", str(e))
+        print("❌ LLM SQL Exception:", str(e))
         return None
 
+
+# ---------------------------------------------------------
+# HELPER: Extract clean SQL for repair
+# ---------------------------------------------------------
 def call_llm_extract_sql(prompt: str):
     """Call LLM and extract pure SQL text."""
     raw = call_llm_for_sql("IGNORE", [])  # temporary dummy (will override)
@@ -119,9 +132,13 @@ def call_llm_extract_sql(prompt: str):
         return clean_sql(content)
 
     except Exception as e:
-        print(" SQL Extract Error:", str(e))
+        print("❌ SQL Extract Error:", str(e))
         return None
 
+
+# ---------------------------------------------------------
+# MAIN: Generate SQL with LLM
+# ---------------------------------------------------------
 def generate_sql_with_llm(question: str, schema_cols):
     raw = call_llm_for_sql(question, schema_cols)
     if not raw:
@@ -130,12 +147,15 @@ def generate_sql_with_llm(question: str, schema_cols):
     sql = clean_sql(raw)
 
     if "select" not in sql.lower():
-        print(" LLM SQL invalid (missing SELECT). SQL returned:", sql)
+        print("⚠️ LLM SQL invalid (missing SELECT). SQL returned:", sql)
         return None
 
     return sql
 
 
+# ---------------------------------------------------------
+# SQL FIXER (used by query_engine.py)
+# ---------------------------------------------------------
 def fix_sql_with_llm(question: str, schema: dict, broken_sql: str, error_msg: str):
     """
     Ask the LLM to FIX an invalid SQL query.
@@ -167,7 +187,7 @@ Return ONLY corrected SQL.
     sql = call_llm_extract_sql(prompt)
 
     if not sql or "select" not in sql.lower():
-        print(" SQL Fix failed, using fallback SQL.")
+        print("⚠️ SQL Fix failed, using fallback SQL.")
         return broken_sql
 
     return sql.strip()

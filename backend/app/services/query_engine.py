@@ -1,9 +1,11 @@
+# backend/query_engine.py
 from typing import List, Optional
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import sqlite3
 import pandas as pd
 
+# LLM SQL helpers (these exist in your repo already)
 from app.services.llm_sql import generate_sql_with_llm, fix_sql_with_llm
 
 @dataclass
@@ -149,7 +151,7 @@ def run_sql_with_correction(question, schema, history_context: str = None):
 
     conn = sqlite3.connect(DB_FILE)
 
-    # 1 LLM SQL generation
+    # 1️⃣ LLM SQL generation
     if history_context:
         prompt = question + "\n\n" + history_context
         sql = generate_sql_with_llm(prompt, schema)
@@ -158,10 +160,10 @@ def run_sql_with_correction(question, schema, history_context: str = None):
 
     # Validate initial SQL
     if not sql or "select" not in sql.lower():
-        print(" LLM SQL invalid → switching to fallback")
+        print("❌ LLM SQL invalid → switching to fallback")
         sql = None
 
-    # 2 LLM + correction loop
+    # 2️⃣ LLM + correction loop
     if sql:
         for _ in range(MAX_RETRIES):
             try:
@@ -176,13 +178,13 @@ def run_sql_with_correction(question, schema, history_context: str = None):
 
                 # If LLM returned invalid SQL, stop retry and fallback
                 if not fixed or "select" not in fixed.lower():
-                    print(" LLM failed to fix SQL → using fallback")
+                    print("⚠️ LLM failed to fix SQL → using fallback")
                     sql = None
                     break
 
                 sql = fixed  # retry with corrected SQL
 
-    # 3 Fallback to rule-based SQL if LLM path failed
+    # 3️⃣ Fallback to rule-based SQL if LLM path failed
     fallback_sql = question_to_sql(question, schema)
 
     try:

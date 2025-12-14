@@ -1,8 +1,10 @@
+# backend/app/services/llm_dataset_summary.py
+
 import os
 import json
 import requests
 
-
+# Correct Groq endpoint
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "llama-3.1-8b-instant"
@@ -62,7 +64,7 @@ def call_llm(prompt):
         return content
 
     except Exception as e:
-        print(" Dataset summary LLM error:", str(e))
+        print("❌ Dataset summary LLM error:", str(e))
         return None
 
 
@@ -100,5 +102,5 @@ TOTAL ROW COUNT:
         parsed = json.loads(raw)
         return parsed
     except Exception:
-        print(" Dataset summary failed to parse JSON → using fallback.")
+        print("⚠️ Dataset summary failed to parse JSON → using fallback.")
         return fallback

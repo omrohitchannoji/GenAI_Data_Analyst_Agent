@@ -1,23 +1,48 @@
+# backend/app/services/llm_charts.py
+
+import os
 import json
-from app.services.openai_client import call_openai
+import requests
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama-3.1-8b-instant"
 
 
 def call_groq(prompt):
-    """
-    SAFELY call OpenAI (replacing Groq) for chart recommendation.
-    Function name kept same to avoid architecture changes.
-    """
+    """Safely call Groq for chart recommendation."""
+    if not GROQ_API_KEY:
+        print("⚠️ No GROQ_API_KEY → returning fallback chart.")
+        return {"chart": "table", "x": None, "y": None, "group": None}
 
-    raw = call_openai(
-        prompt,
-        temperature=0.1,
-        max_tokens=150   # lower to avoid Render output/token limits
-    )
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 200,
+    }
 
-    if not raw:
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=20)
+        print("🔥 CHART LLM RAW:", resp.text[:500])
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+
+        return content
+
+    except Exception as e:
+        print("❌ Chart LLM Error:", str(e))
         return None
 
-    return raw
 
 def llm_chart_recommendation(question, df, schema):
     """Main function that returns a chart spec JSON."""
@@ -62,6 +87,6 @@ DATA SAMPLE: {preview}
     try:
         parsed = json.loads(raw)
         return parsed
-    except Exception:
+    except:
         print("⚠️ LLM chart JSON parse failed. Using fallback.")
         return {"chart": "table", "x": None, "y": None, "group": None}

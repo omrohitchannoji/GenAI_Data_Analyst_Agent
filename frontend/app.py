@@ -3,12 +3,16 @@ import pandas as pd
 import plotly.express as px
 import requests
 
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "https://genai-data-analyst-agent.onrender.com"
 
-
+# ------------------------------------------------------------
+# PAGE CONFIG
+# ------------------------------------------------------------
 st.set_page_config(page_title="AI Data Analyst", page_icon="📊", layout="wide")
 
+# ------------------------------------------------------------
 # CUSTOM CSS (Professional UI)
+# ------------------------------------------------------------
 st.markdown("""
 <style>
 
@@ -50,12 +54,20 @@ hr {
 </style>
 """, unsafe_allow_html=True)
 
+# ------------------------------------------------------------
+# APP HEADER
+# ------------------------------------------------------------
 st.title("📊 AI Data Analyst Agent")
 st.caption("Upload → Ask → Analyze → Visualize → Explain")
 
+# ------------------------------------------------------------
+# TOP NAVIGATION TABS
+# ------------------------------------------------------------
 tab1, tab2, tab3 = st.tabs(["📁 Upload Dataset", "💬 Ask Questions", "📊 Analysis Dashboard"])
 
+# ============================================================
 # TAB 1 — Upload Dataset
+# ============================================================
 with tab1:
     st.markdown("### 📁 Upload Your CSV Dataset")
     with st.container():
@@ -82,7 +94,9 @@ with tab1:
             st.markdown("#### 🧬 Column Types Detected")
             st.json(data["column_types"])
 
+# ============================================================
 # TAB 2 — Ask Questions (Chat-like)
+# ============================================================
 with tab2:
     st.markdown("### 💬 Ask a Business Question")
     st.markdown("Enter natural language questions such as:")
@@ -103,7 +117,9 @@ with tab2:
             st.error("Enter a question first.")
             st.stop()
 
+        # -------------------------------
         # 1. CALL /ask_data
+        # -------------------------------
         with st.spinner("Generating SQL & running query..."):
             ask_resp = requests.post(
                 f"{BACKEND_URL}/ask_data",
@@ -125,7 +141,9 @@ with tab2:
 
         st.session_state["analysis_df"] = df_results
 
+        # -------------------------------
         # 2. CALL /insights
+        # -------------------------------
         with st.spinner("Generating insights + AI explanation..."):
             insights = requests.post(
                 f"{BACKEND_URL}/insights",
@@ -136,7 +154,9 @@ with tab2:
 
         st.success("Analysis complete! Go to **Analysis Dashboard** tab →")
 
+# ============================================================
 # TAB 3 — Results + Insights + LLM Narrative
+# ============================================================
 with tab3:
 
     if "analysis_df" not in st.session_state:
@@ -146,7 +166,9 @@ with tab3:
     df = st.session_state["analysis_df"]
     insights = st.session_state["insights"]
 
+    # -----------------------------
     # SECTION: Metrics Cards
+    # -----------------------------
     st.markdown("### 📌 Key Metrics")
 
     col1, col2, col3 = st.columns(3)
@@ -175,7 +197,9 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
 
+    # -----------------------------
     # SECTION: Visualization
+    # -----------------------------
     st.markdown("### 📈 Visualization")
 
     chart_type = insights.get("suggested_chart")
@@ -194,11 +218,15 @@ with tab3:
     else:
         st.dataframe(df)
 
+    # -----------------------------
     # SECTION: Insights
+    # -----------------------------
     st.markdown("### 💡 Insights Generated")
     for b in insights.get("insights", []):
         st.markdown(f"- {b}")
 
+    # -----------------------------
     # SECTION: AI Narrative
+    # -----------------------------
     st.markdown("### 🤖 AI Explanation")
     st.text(insights.get("llm_explanation", "No explanation available."))
