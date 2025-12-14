@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import requests
 
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "https://genai-data-analyst-agent-frontend.onrender.com/"
 
 # ------------------------------------------------------------
 # PAGE CONFIG
