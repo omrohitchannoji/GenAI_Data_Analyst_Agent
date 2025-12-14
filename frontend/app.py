@@ -231,6 +231,28 @@ with tab3:
             color="group_col"
         )
         st.plotly_chart(fig, use_container_width=True)
+    elif chart == "line":
+        fig = px.line(
+            df,
+            x=details.get("group_column"),
+            y=details.get("value_column"),
+            markers=True
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    elif chart == "histogram":
+        fig = px.histogram(
+            df,
+            x=details.get("value_column"),
+            nbins=20
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    elif chart == "scatter":
+        fig = px.scatter(
+            df,
+            x=details.get("x"),
+            y=details.get("y")
+        )
+        st.plotly_chart(fig, use_container_width=True)
     elif chart == "kpi":
         st.metric("KPI", round(details.get("value", 0), 2))
     else:
