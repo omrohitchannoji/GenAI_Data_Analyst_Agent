@@ -226,8 +226,9 @@ with tab3:
     if chart == "bar":
         fig = px.bar(
             df,
-            x=details.get("group_column"),
-            y=details.get("value_column")
+            x="group_col",
+            y="value",
+            color="group_col"
         )
         st.plotly_chart(fig, use_container_width=True)
     elif chart == "kpi":
