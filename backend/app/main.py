@@ -199,19 +199,20 @@ def insights_endpoint(request: UserQuery):
     # Rule-based insights
     insights = generate_insights_from_df(df, sql, request.question)
 
-    # Chart recommendation — RULE BASED (NO LLM)
-    chart_info = {
-        "chart": insights.get("suggested_chart", "table"),
-        "x": df.columns[0] if df.shape[1] > 1 else None,
-        "y": df.columns[1] if df.shape[1] > 1 else None
-    }
+    # Chart recommendation (Phase 2) — safe call
+    try:
+        chart_info = llm_chart_recommendation(request.question, df, stored_column_types)
+    except Exception as e:
+        print("Chart recommendation error:", str(e))
+        chart_info = {"chart": "table", "x": None, "y": None, "group": None}
     insights["llm_chart"] = chart_info
 
     # Build facts for LLM: extend facts with sample, column types and suggested chart
     facts_list = insights.get("insights", [])
     facts_text = "\n".join(f"- {item}" for item in facts_list)
     facts_text += "\nColumn Types:" + str(stored_column_types)
-    
+    facts_text += "\nSuggested Chart:" + str(insights.get("llm_chart"))
+
     # Call LLM for structured narrative (Phase 3)
     try:
         llm_raw = generate_llm_explanation(

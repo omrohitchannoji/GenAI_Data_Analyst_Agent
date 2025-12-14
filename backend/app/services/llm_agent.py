@@ -82,18 +82,8 @@ def call_llm(prompt):
 
         if resp.status_code != 200:
             return None
-        
-        if '"error"' in resp.text.lower():
-            print("⚠️ Groq returned error payload despite 200 status.")
-            return None
-        
-        data = resp.json()
 
-        # defensive parsing
-        choices = data.get("choices")
-        if not choices:
-            return None
-        
+        data = resp.json()
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
@@ -136,18 +126,9 @@ FACT SUMMARY:
 
     text = clean_llm_text(raw)
 
-    # Try strict JSON first
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        return parsed
     except Exception:
-        pass
-
-    # Try to extract JSON block if LLM added extra text
-    try:
-        start = text.index("{")
-        end = text.rindex("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
-    except Exception:
-        print("⚠️ JSON parse failed → using fallback")
+        print("⚠️ Failed to parse explanation JSON → using fallback.")
         return fallback
