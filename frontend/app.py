@@ -6,7 +6,7 @@ import requests
 # ============================================================
 # CONFIG
 # ============================================================
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = "https://genai-data-analyst-agent.onrender.com"
 
 st.set_page_config(
     page_title="AI Data Analyst",
