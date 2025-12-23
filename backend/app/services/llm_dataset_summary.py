@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-
+import time
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -47,12 +47,18 @@ def call_llm(prompt):
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
-        "max_tokens": 300
+        "max_tokens": 150
     }
 
     try:
-        resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=20)
-        print(" RAW SUMMARY RESPONSE:", resp.text[:600])
+        for attempt in range(2): #try atmost 2 times
+            resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=20)
+            if resp.status_code == 429:
+                print("Rate Limit Hit, Backing off ...")
+                time.sleep(5)
+                continue
+
+            print("RAW SUMMARY RESPONSE", resp.text[:600])
 
         if resp.status_code != 200:
             return None

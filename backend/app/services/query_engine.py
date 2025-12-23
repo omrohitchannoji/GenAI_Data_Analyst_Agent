@@ -1,9 +1,10 @@
-# backend/query_engine.py
 from typing import List, Optional
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import sqlite3
 import pandas as pd
+import app_state
+from rag.langchain_rag import retrieve_context
 
 # LLM SQL helpers (these exist in your repo already)
 from app.services.llm_sql import generate_sql_with_llm, fix_sql_with_llm
@@ -151,19 +152,39 @@ def run_sql_with_correction(question, schema, history_context: str = None):
 
     conn = sqlite3.connect(DB_FILE)
 
-    # 1️⃣ LLM SQL generation
+    # ---------- 🔹 RAG: retrieve dataset context ----------
+    dataset_context = ""
+    try:
+        if app_state.vectorstore:
+            dataset_context=retrieve_context(question, app_state.vectorstore)
+            dataset_context = dataset_context[:1400] # cap to control token limit
+    except Exception:
+        dataset_context=""
+
+    # ---------- 🔹 Build RAG-enhanced prompt ----------
+    rag_prompt = f"""
+    Dataset context:
+    {dataset_context}
+    
+    User Question:
+    {question}
+    """
+    
+    # LLM SQL generation
     if history_context:
-        prompt = question + "\n\n" + history_context
-        sql = generate_sql_with_llm(prompt, schema)
+        rag_prompt += "\n\n" + history_context
+
+    if dataset_context.strip():
+        sql = generate_sql_with_llm(rag_prompt, schema_cols=None)
     else:
         sql = generate_sql_with_llm(question, schema)
-
+    
     # Validate initial SQL
     if not sql or "select" not in sql.lower():
         print("❌ LLM SQL invalid → switching to fallback")
         sql = None
 
-    # 2️⃣ LLM + correction loop
+    # LLM + correction loop
     if sql:
         for _ in range(MAX_RETRIES):
             try:
@@ -173,9 +194,10 @@ def run_sql_with_correction(question, schema, history_context: str = None):
             except Exception as e:
                 error_msg = str(e)
 
-                # ask LLM to fix SQL
-                fixed = fix_sql_with_llm(question, schema, sql, error_msg)
-
+                if dataset_context.strip():
+                    fixed = fix_sql_with_llm(question, dataset_context, sql, error_msg)
+                else:
+                    fixed = fix_sql_with_llm(question, schema, sql, error_msg)
                 # If LLM returned invalid SQL, stop retry and fallback
                 if not fixed or "select" not in fixed.lower():
                     print("⚠️ LLM failed to fix SQL → using fallback")
@@ -184,7 +206,7 @@ def run_sql_with_correction(question, schema, history_context: str = None):
 
                 sql = fixed  # retry with corrected SQL
 
-    # 3️⃣ Fallback to rule-based SQL if LLM path failed
+    # Fallback to rule-based SQL if LLM path failed
     fallback_sql = question_to_sql(question, schema)
 
     try:

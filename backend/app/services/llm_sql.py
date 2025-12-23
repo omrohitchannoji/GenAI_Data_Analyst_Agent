@@ -122,8 +122,16 @@ def call_llm_extract_sql(prompt: str):
         print(" SQL Extract Error:", str(e))
         return None
 
-def generate_sql_with_llm(question: str, schema_cols):
-    raw = call_llm_for_sql(question, schema_cols)
+def generate_sql_with_llm(prompt: str, schema_cols=None):
+    """
+    If schema_cols is provided → schema-based SQL generation
+    If schema_cols is None → prompt already contains RAG context
+    """
+    if schema_cols:
+        raw = call_llm_for_sql(prompt, schema_cols)
+    else:
+        raw = call_llm_extract_sql(prompt)
+
     if not raw:
         return None
 
@@ -152,7 +160,7 @@ A SQL query caused an error. Your job is to FIX the SQL.
 - Do NOT explain anything.
 - No markdown.
 - No backticks.
-- Use ONLY columns from this schema:
+- Use ONLY columns mentioned in the context below::
 {schema}
 
 BROKEN SQL:

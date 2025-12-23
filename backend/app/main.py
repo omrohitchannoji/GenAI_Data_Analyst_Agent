@@ -11,6 +11,9 @@ from app.core.utils import detect_column_types  # keep utils minimal: detect_col
 from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
+from rag.context_builder import build_dataset_context
+from rag.langchain_rag import build_vector_store
+import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
 conversation_memory = {}
@@ -66,6 +69,10 @@ async def upload_csv(file: UploadFile = File(...)):
         # Read CSV (stream)
         df = pd.read_csv(file.file)
 
+        # ---------- RAG: build dataset context + vector store ----------
+        chunks = build_dataset_context(df)
+        app_state.vectorstore = build_vector_store(chunks)
+
         # Detect and normalize column types using your utils
         raw_types = detect_column_types(df)
         stored_column_types = {
@@ -84,18 +91,18 @@ async def upload_csv(file: UploadFile = File(...)):
         num_rows = len(df)
 
         # NOTE: generate_dataset_summary signature expects (column_types, preview_rows, num_rows)
-        dataset_summary = generate_dataset_summary(
-            stored_column_types,
-            sample_rows,
-            num_rows
-        )
+        # dataset_summary = generate_dataset_summary(
+        #     stored_column_types,
+        #     sample_rows,
+        #     num_rows
+        # )
 
         return {
             "filename": file.filename,
             "columns": df.columns.tolist(),
             "preview": df.head(20).to_dict(orient="records"),
             "column_types": stored_column_types,
-            "dataset_summary": dataset_summary
+            # "dataset_summary": dataset_summary
         }
 
     except Exception as e:
@@ -215,11 +222,14 @@ def insights_endpoint(request: UserQuery):
     
     # Call LLM for structured narrative (Phase 3)
     try:
-        llm_raw = generate_llm_explanation(
-            question = request.question,
-            sql = sql,
-            facts = facts_text
-        )
+        if insights.get("insights"):
+            llm_raw = generate_llm_explanation(
+                question = request.question,
+                sql = sql,
+                facts = facts_text
+            )
+        else:
+            llm_raw = None
 
         # llm_raw might be a dict (our safer llm_agent returns dict) or a JSON string.
         if isinstance(llm_raw, dict):
@@ -272,3 +282,21 @@ def insights_endpoint(request: UserQuery):
     conversation_memory[request.session_id] = history
 
     return insights
+
+@app.post("/dataset_summary")
+def dataset_summary():
+    global stored_column_types
+    if stored_column_types is None:
+        return {"error": "Upload a dataset first."}
+
+    # Load data
+    conn = sqlite3.connect(DB_FILE)
+    df = pd.read_sql("SELECT * FROM data LIMIT 10", conn)
+    conn.close()
+
+    summary = generate_dataset_summary(
+        stored_column_types,
+        df.to_dict(orient="records"),
+        len(df)
+    )
+    return summary

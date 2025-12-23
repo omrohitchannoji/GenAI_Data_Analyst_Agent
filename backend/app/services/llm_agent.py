@@ -1,8 +1,7 @@
-# backend/app/services/llm_agent.py
-
 import os
 import json
 import requests
+import time
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -77,8 +76,14 @@ def call_llm(prompt):
     }
 
     try:
-        resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=20)
-        print("🔥 RAW LLM EXPLANATION RESPONSE:", resp.text[:600])
+        for attempt in range(2):
+            resp = requests.post(GROQ_URL, headers=HEADERS, json=payload, timeout=30)
+
+            if resp.status_code == 429:
+                print("Rate Limit hit explanation LLm, backing off...")
+                time.sleep(5)
+                continue
+            break
 
         if resp.status_code != 200:
             return None
@@ -87,7 +92,7 @@ def call_llm(prompt):
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        print("❌ LLM agent error:", str(e))
+        print(" LLM agent error:", str(e))
         return None
 
 
