@@ -4,3 +4,9 @@ pandas
 numpy
 requests
 python-multipart
+openai>=1.0.0
+langchain
+langchain-core
+langchain-community
+chromadb
+sentence-transformers
