@@ -1,6 +1,8 @@
 # 🤖 GenAI Data Analyst Agent
 
 A production-ready **AI Data Analyst Agent** that allows users to upload datasets, ask natural-language business questions, automatically generate SQL, visualize results, and receive **LLM-powered executive insights** — all through a clean web interface.
+> ⚠️ Designed with real-world GenAI constraints in mind (token limits, fallback logic, deterministic execution).
+
 
 🔗 **Live App**: [https://genai-data-analyst-agent.onrender.com](https://genai-data-analyst-agent.onrender.com)
 🔗 **API Docs**: [https://genai-data-analyst-agent.onrender.com/docs](https://genai-data-analyst-agent.onrender.com/docs)
@@ -20,8 +22,6 @@ This project simulates how a **real-world AI Data Analyst** works:
    * Generates **rule-based insights**
    * Creates **charts**
    * Produces a **consulting-style AI explanation** (executive summary, observations, recommendation)
-
-This is not a demo toy — it is designed to be **resume-, interview-, and recruiter-ready**.
 
 ---
 
@@ -50,6 +50,12 @@ Backend (FastAPI)
    ├── LLM services (SQL, charts, explanation)
    └── SQLite execution layer
 ```
+### Design Philosophy
+
+The system follows a **deterministic-first, LLM-assisted** design:
+- LLMs are used for interpretation and explanation
+- All computations (SQL execution, KPIs, aggregations) are deterministic
+- This prevents hallucinated metrics and ensures analytical correctness
 
 The system is intentionally **modular**, making it easy to extend with:
 
@@ -101,6 +107,20 @@ The system is intentionally **modular**, making it easy to extend with:
 3. Refresh the frontend page
 
 Once warmed, the app works normally.
+
+## ⚠️ Known Limitations & Design Tradeoffs
+
+This project intentionally uses a **free-tier LLM deployment**, which introduces real-world constraints.
+
+### Token & Rate Limits
+- Some requests may hit LLM token or rate limits on the free Groq tier
+- The system handles this gracefully using:
+  - Rule-based SQL fallbacks
+  - Deterministic insight computation
+- In production, this would be addressed via caching, batching, or higher-tier quotas
+
+### Why This Matters
+These constraints were deliberately handled to reflect how GenAI systems behave under cost and infrastructure limits.
 
 ---
 
@@ -162,6 +182,10 @@ GROQ_API_KEY=your_api_key_here
 * CI/CD with GitHub Actions
 * Authentication & user sessions
 * Vector-based semantic querying
+* Vector-based semantic querying (RAG-based NL → SQL context enrichment)
+
+
+> Note: An experimental RAG implementation exists on a feature branch and can be enabled with sufficient memory or hosted embeddings.
 
 ---
 
