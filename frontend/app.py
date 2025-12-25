@@ -19,7 +19,7 @@ st.set_page_config(
 # ============================================================
 st.info(
     "🚀 This demo uses a free-tier backend. "
-    "On first load, the backend may take ~20–40 seconds to wake up."
+    "On first load, the backend may take ~30–60 seconds to wake up."
 )
 
 try:
@@ -82,13 +82,13 @@ with tab1:
             resp = requests.post(
                 f"{BACKEND_URL}/upload_csv",
                 files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")},
-                timeout=30
+                timeout=120
             )
 
         if resp.status_code != 200:
             st.warning(
                 "⏳ Backend is still starting. "
-                "Please wait ~20 seconds and upload again."
+                "Please wait ~30 seconds and upload again."
             )
             st.stop()
 
