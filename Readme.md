@@ -4,8 +4,8 @@ A production-ready **AI Data Analyst Agent** that allows users to upload dataset
 > ⚠️ Designed with real-world GenAI constraints in mind (token limits, fallback logic, deterministic execution).
 
 
-🔗 **Live App**: [https://genai-data-analyst-agent.onrender.com](https://genai-data-analyst-agent.onrender.com)
-🔗 **API Docs**: [https://genai-data-analyst-agent.onrender.com/docs](https://genai-data-analyst-agent.onrender.com/docs)
+🔗 [Live App](https://genaidataanalystagent-omrohit.streamlit.app/)
+🔗 [API Docs](http://13.201.45.117:8000//docs)
 
 ---
 
@@ -86,41 +86,28 @@ The system is intentionally **modular**, making it easy to extend with:
 
 **Deployment**
 
-* Render (Web Service)
+* Backend: AWS EC2 (Ubuntu) + systemd (always-on)
+* Frontend: Streamlit Community Cloud
 
 ---
 
-## 🧊 Cold Start Notice (Important)
-
-⚠️ **Cold Start Behavior (Render Free Tier)**
-
-* The backend may **sleep after inactivity**
-* First request can take **20–40 seconds** to respond
-
-✅ This is expected behavior on free-tier deployments.
-
-**What to do if the app feels stuck:**
-
-1. Open the API docs directly:
-   👉 [https://genai-data-analyst-agent.onrender.com/docs](https://genai-data-analyst-agent.onrender.com/docs)
-2. Wait for the backend to wake up
-3. Refresh the frontend page
-
-Once warmed, the app works normally.
-
 ## ⚠️ Known Limitations & Design Tradeoffs
 
-This project intentionally uses a **free-tier LLM deployment**, which introduces real-world constraints.
+### Free-Tier LLM Constraints
+- Groq free tier enforces rate and token limits
+- Some requests may fall back to deterministic logic
 
-### Token & Rate Limits
-- Some requests may hit LLM token or rate limits on the free Groq tier
-- The system handles this gracefully using:
-  - Rule-based SQL fallbacks
-  - Deterministic insight computation
-- In production, this would be addressed via caching, batching, or higher-tier quotas
+### Why This Is Intentional
+- The system is designed to
+   - Expose real-world GenAI reliability issues
+   - Demonstrate graceful degradation strategies
+   - Avoid “demo-only” behavior
 
-### Why This Matters
-These constraints were deliberately handled to reflect how GenAI systems behave under cost and infrastructure limits.
+### In production, this would be mitigated via:
+- Caching
+- Batching
+- Higher-tier LLM quotas
+- Async execution
 
 ---
 
@@ -174,6 +161,11 @@ GROQ_API_KEY=your_api_key_here
 ```
 
 ---
+### 🧪 Experimental Features
+- Vector-based RAG for dataset context enrichment
+- Semantic chunking of dataset summaries
+
+These features are enabled in the deployed version and optimized for memory-safe execution on EC2.
 
 ## 📝 Future Enhancements
 
@@ -183,9 +175,6 @@ GROQ_API_KEY=your_api_key_here
 * Authentication & user sessions
 * Vector-based semantic querying
 * Vector-based semantic querying (RAG-based NL → SQL context enrichment)
-
-
-> Note: An experimental RAG implementation exists on a feature branch and can be enabled with sufficient memory or hosted embeddings.
 
 ---
 
