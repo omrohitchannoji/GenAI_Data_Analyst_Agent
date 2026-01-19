@@ -27,12 +27,27 @@ This project simulates how a **real-world AI Data Analyst** works:
 
 ## 🧠 Key Features
 
-* 🔍 **Natural Language → SQL** (LLM + rule-based fallback)
-* 📊 **Automatic insights & KPIs**
-* 📈 **Smart chart recommendations**
-* 🤖 **LLM-generated executive explanations** (structured, non-hallucinating)
-* 🧱 **Fail-safe architecture** (fallbacks when LLMs fail or rate-limit)
-* 🌐 **Deployed backend + frontend**
+* 🔍 **Natural Language → SQL**
+  - LLM-powered SQL generation grounded in dataset context
+  - Rule-based SQL fallback for reliability
+
+* 🧠 **RAG-based Dataset Understanding (LangChain)**
+  - Dataset schema, column semantics, and summaries embedded
+  - Retrieval-Augmented Generation (RAG) ensures SQL is context-aware, not guessed
+
+* 📊 **Deterministic Insights & KPIs**
+  - Aggregations, trends, and anomaly detection computed via code
+  - Ensures correctness and reproducibility
+
+* 📈 **Smart Chart Recommendations**
+  - Automatic bar, line, KPI, or table selection based on result structure
+
+* 🤖 **LLM-Generated Executive Explanations**
+  - Consulting-style summaries grounded in computed insights
+  - No hallucinated metrics
+
+* 🧱 **Fail-Safe Architecture**
+  - Graceful degradation when LLMs fail or rate-limit
 
 ---
 
@@ -44,25 +59,37 @@ Frontend (Streamlit)
    │ HTTP requests
    ▼
 Backend (FastAPI)
-   ├── Dataset upload & schema detection
+   ├── Dataset upload & schema analysis
+   ├── RAG context builder (LangChain + vector store)
    ├── Query engine (NL → SQL)
-   ├── Rule-based insights engine
-   ├── LLM services (SQL, charts, explanation)
-   └── SQLite execution layer
+   ├── SQLite execution layer
+   ├── Deterministic insights engine
+   ├── Visualization recommendation
+   └── LLM-based executive explanation
 ```
 ### Design Philosophy
 
-The system follows a **deterministic-first, LLM-assisted** design:
-- LLMs are used for interpretation and explanation
-- All computations (SQL execution, KPIs, aggregations) are deterministic
-- This prevents hallucinated metrics and ensures analytical correctness
+### Design Philosophy
 
-The system is intentionally **modular**, making it easy to extend with:
+The system follows a **dataset-first, RAG-grounded, LLM-assisted** design:
 
-* MLflow
-* Vector databases
-* Authentication
-* Caching
+- **LangChain-based RAG** is used to ground the LLM in:
+  - Dataset schema
+  - Column semantics
+  - Statistical summaries
+
+- LLMs are used for:
+  - Business intent interpretation
+  - SQL generation (with dataset grounding)
+  - Executive-level explanations
+
+- Deterministic code is used for:
+  - SQL execution
+  - Aggregations and KPIs
+  - Trend and anomaly detection
+  - Chart recommendation
+
+This hybrid approach reduces hallucinations while preserving analytical flexibility.
 
 ---
 
@@ -83,6 +110,8 @@ The system is intentionally **modular**, making it easy to extend with:
 
 * Groq API
 * LLaMA 3.1 (Instant)
+* LangChain (RAG orchestration)
+* Vector embeddings for dataset context
 
 **Deployment**
 
@@ -162,20 +191,19 @@ GROQ_API_KEY=your_api_key_here
 
 ---
 ### 🧪 Experimental Features
-- Vector-based RAG for dataset context enrichment
-- Semantic chunking of dataset summaries
+- RAG-based dataset context enrichment using LangChain
+- Semantic chunking and embedding of dataset metadata
 
 These features are enabled in the deployed version and optimized for memory-safe execution on EC2.
 
 ## 📝 Future Enhancements
 
 * MLflow experiment tracking
-* Dockerization
-* CI/CD with GitHub Actions
-* Authentication & user sessions
-* Vector-based semantic querying
-* Vector-based semantic querying (RAG-based NL → SQL context enrichment)
-
+* Improved semantic grounding for NL → SQL accuracy  
+* Multi-turn analytical conversations  
+* Optimized RAG retrieval & caching  
+* Query confidence scoring & validation  
+* Dockerization & CI/CD pipeline  
 ---
 
 ## 👤 Author
