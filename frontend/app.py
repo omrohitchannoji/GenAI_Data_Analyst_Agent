@@ -17,10 +17,6 @@ st.set_page_config(
 # ============================================================
 # BACKEND WARM-UP (CRITICAL FOR RENDER)
 # ============================================================
-st.info(
-    "🚀 This demo uses a free-tier backend. "
-    "On first load, the backend may take ~20–40 seconds to wake up."
-)
 
 try:
     requests.get(f"{BACKEND_URL}/docs", timeout=5)
