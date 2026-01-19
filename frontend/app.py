@@ -6,7 +6,7 @@ import requests
 # ============================================================
 # CONFIG
 # ============================================================
-BACKEND_URL = "https://genai-data-analyst-agent.onrender.com"
+BACKEND_URL = "http://13.201.45.117:8000/"
 
 st.set_page_config(
     page_title="AI Data Analyst",
@@ -17,10 +17,6 @@ st.set_page_config(
 # ============================================================
 # BACKEND WARM-UP (CRITICAL FOR RENDER)
 # ============================================================
-st.info(
-    "🚀 This demo uses a free-tier backend. "
-    "On first load, the backend may take ~20–40 seconds to wake up."
-)
 
 try:
     requests.get(f"{BACKEND_URL}/docs", timeout=5)
