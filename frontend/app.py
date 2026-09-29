@@ -7,7 +7,11 @@ import requests
 # ============================================================
 # CONFIG
 # ============================================================
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+try:
+    BACKEND_URL = os.environ.get("BACKEND_URL") or st.secrets.get("BACKEND_URL", "http://localhost:8000")
+except Exception:
+    BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = str(BACKEND_URL).rstrip("/")
 
 st.set_page_config(
     page_title="Agentic AI Data Analyst",
