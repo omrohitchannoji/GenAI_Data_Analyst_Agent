@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentic_analyst_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+    volumes:
+      # Mount application code for live updates
+      - ./backend/app:/app/app
+      # Persistent SQLite databases
+      - ./backend/uploaded_data.db:/app/uploaded_data.db
+      - ./backend/agent_checkpoints.db:/app/agent_checkpoints.db
+      - ./backend/dataset_registry.db:/app/dataset_registry.db
+      - ./backend/business_glossary.db:/app/business_glossary.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agentic_analyst_frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend/app.py:/app/app.py
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

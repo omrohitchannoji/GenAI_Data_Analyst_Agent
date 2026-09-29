@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 import sqlite3
-import os, json
+import os, json, time
 from app.services.llm_agent import generate_llm_explanation
 from app.services.query_engine import run_sql_with_correction, question_to_sql_with_memory
 from app.core.utils import detect_column_types  # keep utils minimal: detect_column_types
@@ -56,24 +56,116 @@ def run_sql_query(sql: str):
     except Exception as e:
         return f"SQL Error: {str(e)}"
 
+from app.agent.state import QueryRequest, QueryResponse, TerminalStatus, FactMetric, ChartConfig, QueryResult
+from app.agent.graph import run_agent_turn
+from app.core.dataset_registry import default_registry
+from app.core.rate_limiter import default_limiter
+from app.core.logger import agent_logger
+
+@app.post("/query", response_model=QueryResponse)
+def query_agent(request: QueryRequest):
+    """
+    Stateful Agentic AI Data Analyst query endpoint.
+    Orchestrates intent planning, AST SQL validation, read-only execution,
+    bounded repair, deterministic analytics, and grounded executive explanation.
+    """
+    principal_id = "demo_user"
+    # Enforce rate limit
+    default_limiter.check(principal_id)
+
+    start_time = time.time()
+    agent_logger.log_event(
+        event_name="query_received",
+        principal_id=principal_id,
+        metadata={"question": request.question, "dataset_id": request.dataset_id}
+    )
+
+    res = run_agent_turn(
+        question=request.question,
+        dataset_id=request.dataset_id,
+        session_id=request.session_id,
+        principal_id=principal_id
+    )
+
+    elapsed = round(time.time() - start_time, 3)
+    agent_logger.log_event(
+        event_name="query_completed",
+        request_id=res.get("request_id"),
+        principal_id=principal_id,
+        status=res.get("terminal_status", "unknown"),
+        latency_seconds=elapsed,
+        metadata={"model_calls": res.get("model_calls", 0), "retries": res.get("retry_count", 0)}
+    )
+
+    query_res = None
+    if res.get("sql_result") is not None:
+        query_res = QueryResult(
+            columns=res.get("sql_columns") or [],
+            rows=res.get("sql_result") or [],
+            row_count=len(res.get("sql_result") or []),
+            is_truncated=False
+        )
+
+    chart_cfg = None
+    if res.get("chart_config"):
+        chart_cfg = ChartConfig(
+            chart_type=res["chart_config"].get("chart_type", "table"),
+            x=res["chart_config"].get("x"),
+            y=res["chart_config"].get("y"),
+            title=res["chart_config"].get("title"),
+            details=res.get("analysis_result", {})
+        )
+
+    metrics_list = [
+        FactMetric(
+            fact_id=m["fact_id"],
+            metric_name=m["metric_name"],
+            value=m["value"],
+            scope=m.get("scope")
+        ) for m in res.get("metrics", [])
+    ]
+
+    status_str = res.get("terminal_status") or TerminalStatus.FAILED.value
+    try:
+        status_enum = TerminalStatus(status_str)
+    except ValueError:
+        status_enum = TerminalStatus.FAILED
+
+    return QueryResponse(
+        request_id=res.get("request_id", "req_unknown"),
+        session_id=res.get("session_id", request.session_id),
+        dataset_id=res.get("dataset_id", request.dataset_id),
+        status=status_enum,
+        resolved_question=res.get("resolved_question") or request.question,
+        sql=res.get("generated_sql"),
+        result=query_res,
+        metrics=metrics_list,
+        chart=chart_cfg,
+        answer=res.get("final_response"),
+        clarification_question=res.get("clarification_question"),
+        warnings=res.get("warnings", []),
+        error=res.get("error"),
+        metadata={
+            "model_calls": res.get("model_calls", 0),
+            "retry_count": res.get("retry_count", 0),
+            "events": res.get("execution_events", [])
+        }
+    )
+
 @app.post("/upload_csv")
 async def upload_csv(file: UploadFile = File(...)):
     """
-    Upload a CSV, detect column types, save to sqlite, and return a dataset summary.
+    Upload a CSV, detect column types, register dataset, and save to sqlite.
     """
     global stored_column_types
     if not file.filename.lower().endswith(".csv"):
         return {"error": "Please upload a CSV file"}
 
     try:
-        # Read CSV (stream)
+        # Read CSV
         df = pd.read_csv(file.file)
 
-        # ---------- RAG: build dataset context + vector store ----------
-        chunks = build_dataset_context(df)
-        app_state.vectorstore = build_vector_store(chunks)
-
-        # Detect and normalize column types using your utils
+        # Detect column types
         raw_types = detect_column_types(df)
         stored_column_types = {
             "numerical_columns": raw_types.get("numeric", []),
@@ -81,28 +173,29 @@ async def upload_csv(file: UploadFile = File(...)):
             "date_columns": raw_types.get("date", [])
         }
 
-        # Save to sqlite
+        # Save to SQLite
         conn = sqlite3.connect(DB_FILE)
         df.to_sql("data", conn, if_exists="replace", index=False)
         conn.close()
 
-        # create a sample for llm dataset summary
-        sample_rows = df.head(10).to_dict(orient="records")
-        num_rows = len(df)
-
-        # NOTE: generate_dataset_summary signature expects (column_types, preview_rows, num_rows)
-        # dataset_summary = generate_dataset_summary(
-        #     stored_column_types,
-        #     sample_rows,
-        #     num_rows
-        # )
+        # Register in dataset registry
+        dataset_id = "default"
+        default_registry.register_dataset(
+            dataset_id=dataset_id,
+            principal_id="demo_user",
+            filename=file.filename,
+            table_name="data",
+            db_path=os.path.abspath(DB_FILE),
+            row_count=len(df),
+            column_types=stored_column_types
+        )
 
         return {
+            "dataset_id": dataset_id,
             "filename": file.filename,
             "columns": df.columns.tolist(),
             "preview": df.head(20).to_dict(orient="records"),
-            "column_types": stored_column_types,
-            # "dataset_summary": dataset_summary
+            "column_types": stored_column_types
         }
 
     except Exception as e:
