@@ -11,7 +11,7 @@ A production-grade, stateful **Agentic AI Data Analyst** that converts business 
 
 Built with a **single-agent LangGraph state machine**, strict **`sqlglot` AST security parsing**, **read-only SQLite query sandboxing**, and **durable session checkpoints (`SqliteSaver`)**.
 
-🔗 [Live Streamlit App](https://genaidataanalystagent-omrohit.streamlit.app/)  
+🔗 [Live Streamlit App](https://genaidataanalystagent.streamlit.app/)  
 🔗 [Live FastAPI Docs (AWS EC2)](http://13.203.201.200:8000/docs)  
 🔗 [API Health Check](http://13.203.201.200:8000/health)
 
