@@ -11,8 +11,6 @@ from app.core.utils import detect_column_types  # keep utils minimal: detect_col
 from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
-from rag.context_builder import build_dataset_context
-from rag.langchain_rag import build_vector_store
 import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
