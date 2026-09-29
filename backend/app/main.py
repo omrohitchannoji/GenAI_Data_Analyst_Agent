@@ -60,6 +60,18 @@ from app.core.dataset_registry import default_registry
 from app.core.rate_limiter import default_limiter
 from app.core.logger import agent_logger
 
+@app.get("/")
+def root():
+    return {"message": "Agentic AI Data Analyst API is running", "docs": "/docs"}
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "service": "agentic_data_analyst_backend",
+        "database": "connected" if os.path.exists(DB_FILE) else "ready"
+    }
+
 @app.post("/query", response_model=QueryResponse)
 def query_agent(request: QueryRequest):
     """
