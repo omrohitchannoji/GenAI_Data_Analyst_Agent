@@ -4,7 +4,6 @@ from difflib import SequenceMatcher
 import sqlite3
 import pandas as pd
 import app_state
-from rag.langchain_rag import retrieve_context
 
 # LLM SQL helpers (these exist in your repo already)
 from app.services.llm_sql import generate_sql_with_llm, fix_sql_with_llm
