@@ -30,21 +30,44 @@ def suggest_chart(df):
     if len(cols) == 1:
         return "kpi"
 
-    if len(cols) == 2:
-        # Categorical + numeric -> bar
-        if df.iloc[:,0].dtype == object and np.issubdtype(df.iloc[:,1].dtype, np.number):
+    if len(cols) >= 2:
+        non_num = [c for c in cols if not pd.api.types.is_numeric_dtype(df[c])]
+        num = [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
+        if non_num and num:
+            c0 = df[non_num[0]]
+            if pd.api.types.is_datetime64_any_dtype(c0):
+                return "line"
             return "bar"
-        # Datetime + numeric -> line
-        if np.issubdtype(df.iloc[:,0].dtype, np.datetime64) and np.issubdtype(df.iloc[:,1].dtype, np.number):
-            return "line"
 
     return "table"
 
 def summarize_grouped(df):
-    group_col = df.columns[0]
-    val_col = df.columns[1]
+    # Find numeric columns or attempt numeric coercion from right to left
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if not num_cols:
+        for c in reversed(df.columns):
+            coerced = pd.to_numeric(df[c], errors="coerce")
+            if coerced.notna().sum() > 0:
+                df[c] = coerced
+                num_cols.append(c)
+                break
 
-    # Ensure numeric values in metric column
+    if not num_cols:
+        return {
+            "group_column": df.columns[0],
+            "value_column": df.columns[1] if len(df.columns) > 1 else df.columns[0],
+            "top": [],
+            "bottom": [],
+            "mean": None,
+            "percent_difference_top_vs_median": None,
+            "anomaly_count": 0,
+            "bullets": ["No numeric values found for grouped analysis."]
+        }
+
+    val_col = num_cols[-1]
+    non_val_cols = [c for c in df.columns if c != val_col]
+    group_col = non_val_cols[0] if non_val_cols else df.columns[0]
+
     df[val_col] = pd.to_numeric(df[val_col], errors="coerce")
     df = df.dropna(subset=[val_col])
 

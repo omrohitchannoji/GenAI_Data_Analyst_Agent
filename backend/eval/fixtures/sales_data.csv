@@ -1,0 +1,151 @@
+order_id,order_date,customer_id,customer_status,region,category,quantity,revenue,cost
+1001,2023-01-15,C023,Active,South,Electronics,1,810.95,385.22
+1002,2023-01-22,C002,Active,West,Electronics,11,546.87,434.97
+1003,2023-01-29,C010,Active,East,Office Supplies,5,1343.44,836.88
+1004,2023-02-05,C002,Active,East,Furniture,10,210.55,154.47
+1005,2023-02-12,C017,Active,North,Furniture,9,508.55,334.58
+1006,2023-02-19,C008,Inactive,North,Electronics,6,,
+1007,2023-02-26,C001,Active,North,Furniture,11,156.59,115.65
+1008,2023-03-05,C009,Active,West,Furniture,11,732.1,525.75
+1009,2023-03-12,C011,Pending,East,Office Supplies,1,1037.92,778.81
+1010,2023-03-19,C022,Active,East,Office Supplies,13,777.25,360.96
+1011,2023-03-26,C016,Pending,North,Office Supplies,1,252.33,0.0
+1012,2023-04-02,C007,Active,West,Office Supplies,2,578.38,417.2
+1013,2023-04-09,C010,Active,West,Electronics,9,23.84,14.84
+1014,2023-04-16,C023,Inactive,North,Office Supplies,3,1305.09,965.23
+1015,2023-04-23,C003,Inactive,North,Furniture,1,145.09,64.76
+1016,2023-04-30,C018,Pending,North,Electronics,5,903.97,579.82
+1017,2023-05-07,C024,Inactive,South,Furniture,7,1479.66,844.1
+1018,2023-05-14,C013,Pending,South,Furniture,6,814.15,493.09
+1019,2023-05-21,C007,Active,South,Furniture,12,1387.58,932.15
+1020,2023-05-29,C004,Active,North,Office Supplies,1,369.45,231.29
+1021,2023-06-05,C013,Inactive,East,Office Supplies,5,1144.73,735.99
+1022,2023-06-12,C020,Pending,North,Electronics,5,806.27,498.97
+1023,2023-06-19,C001,,North,Electronics,6,1086.36,634.47
+1024,2023-06-26,C008,Active,South,Office Supplies,3,112.27,83.9
+1025,2023-07-03,C014,Active,South,Furniture,5,238.65,96.77
+1026,2023-07-10,C016,Inactive,East,Electronics,7,,
+1027,2023-07-17,C014,Active,North,Office Supplies,5,1037.0,678.69
+1028,2023-07-24,C012,Pending,South,Office Supplies,5,1269.77,917.13
+1029,2023-07-31,C019,Pending,East,Office Supplies,5,1129.43,756.22
+1030,2023-08-07,C023,Active,North,Furniture,10,65.1,50.26
+1031,2023-08-14,C015,Inactive,East,Office Supplies,10,1303.48,1083.95
+1032,2023-08-21,C002,Inactive,North,Office Supplies,3,544.14,301.53
+1033,2023-08-28,C002,Active,North,Office Supplies,1,607.8,305.3
+1034,2023-09-04,C023,Pending,West,Office Supplies,5,175.21,103.48
+1035,2023-09-11,C022,Active,West,Electronics,14,1111.36,588.54
+1036,2023-09-18,C019,Pending,West,Electronics,9,289.78,196.1
+1037,2023-09-25,C022,Active,South,Office Supplies,14,854.67,692.57
+1038,2023-10-02,C022,Pending,North,Furniture,1,1264.25,584.84
+1039,2023-10-10,C017,Active,East,Electronics,3,152.02,67.7
+1040,2023-10-17,C020,Active,South,Office Supplies,13,812.3,418.5
+1041,2023-10-24,C010,Pending,North,Electronics,13,365.16,265.38
+1042,2023-10-31,C006,Active,South,Electronics,4,527.53,351.77
+1043,2023-11-07,C015,Active,North,Furniture,14,721.48,321.78
+1044,2023-11-14,C022,,West,Office Supplies,1,545.55,443.77
+1045,2023-11-21,C011,,North,Office Supplies,1,980.26,740.62
+1046,2023-11-28,C005,Active,East,Furniture,8,729.78,299.47
+1047,2023-12-05,C001,Inactive,South,Furniture,2,884.62,613.14
+1048,2023-12-12,C008,Active,South,Office Supplies,12,1110.5,829.61
+1049,2023-12-19,C021,Active,South,Office Supplies,8,845.46,480.64
+1050,2023-12-26,C012,Active,North,Furniture,7,888.07,382.77
+1051,2024-01-02,C012,Inactive,West,Electronics,10,855.4,371.92
+1052,2024-01-09,C005,Inactive,East,Electronics,10,580.58,259.47
+1053,2024-01-16,C007,Inactive,West,Furniture,2,519.42,404.21
+1054,2024-01-23,C004,Inactive,West,Electronics,6,1351.48,1094.44
+1055,2024-01-30,C006,Active,East,Furniture,6,919.18,418.47
+1056,2024-02-06,C013,Active,West,Electronics,3,381.64,193.17
+1057,2024-02-14,C020,Active,North,Electronics,11,757.41,359.38
+1058,2024-02-21,C015,Active,North,Office Supplies,2,508.92,246.24
+1059,2024-02-28,C003,Active,North,Office Supplies,12,1401.86,1089.06
+1060,2024-03-06,C023,Pending,South,Electronics,1,31.15,17.12
+1061,2024-03-13,C008,Active,South,Electronics,6,353.49,190.94
+1062,2024-03-20,C020,Active,North,Office Supplies,12,560.73,281.67
+1063,2024-03-27,C016,Active,West,Office Supplies,5,741.96,499.75
+1064,2024-04-03,C013,Inactive,South,Office Supplies,14,1279.21,730.03
+1065,2024-04-10,C018,Inactive,North,Furniture,14,150.07,110.29
+1066,2024-04-17,C010,Active,South,Electronics,11,1212.68,597.26
+1067,2024-04-24,C019,Active,North,Office Supplies,9,102.37,77.24
+1068,2024-05-01,C017,Inactive,West,Electronics,1,1266.62,850.76
+1069,2024-05-08,C024,Active,North,Furniture,7,96.42,43.53
+1070,2024-05-15,C019,Pending,West,Furniture,5,47.0,27.57
+1071,2024-05-22,C023,Inactive,East,Office Supplies,5,1051.5,829.2
+1072,2024-05-29,C005,Active,North,Furniture,14,1495.94,1219.69
+1073,2024-06-05,C021,Active,North,Electronics,2,1346.98,821.07
+1074,2024-06-12,C023,,West,Office Supplies,11,872.48,537.78
+1075,2024-06-19,C009,Active,East,Electronics,3,1377.75,1120.53
+1076,2024-06-27,C012,Active,East,Electronics,7,27.84,18.49
+1077,2024-07-04,C021,Pending,East,Furniture,6,1463.1,606.87
+1078,2024-07-11,C001,Pending,North,Furniture,12,746.31,605.06
+1079,2024-07-18,C001,,South,Furniture,2,1089.89,557.7
+1080,2024-07-25,C015,Inactive,North,Furniture,6,1234.87,814.93
+1081,2024-08-01,C002,Active,West,Furniture,2,1083.32,514.01
+1082,2024-08-08,C022,Active,East,Office Supplies,2,811.85,337.12
+1083,2024-08-15,C016,Inactive,South,Electronics,2,725.4,391.83
+1084,2024-08-22,C008,Active,North,Electronics,14,1261.1,947.37
+1085,2024-08-29,C013,Active,South,Electronics,11,323.51,169.82
+1086,2024-09-05,C021,Pending,South,Electronics,3,1452.63,724.93
+1087,2024-09-12,C001,Active,East,Furniture,2,1072.21,531.5
+1088,2024-09-19,C016,Active,East,Electronics,4,315.27,199.2
+1089,2024-09-26,C007,Active,West,Office Supplies,9,1109.65,930.99
+1090,2024-10-03,C005,Active,South,Office Supplies,6,804.16,487.76
+1091,2024-10-10,C022,Active,North,Electronics,1,1066.7,694.19
+1092,2024-10-17,C023,Active,East,Electronics,8,1156.31,910.34
+1093,2024-10-24,C003,Active,East,Office Supplies,12,149.19,95.6
+1094,2024-10-31,C012,Inactive,East,Office Supplies,14,769.03,371.45
+1095,2024-11-08,C016,Inactive,East,Furniture,7,1399.38,748.41
+1096,2024-11-15,C019,Active,South,Office Supplies,10,494.55,266.8
+1097,2024-11-22,C005,,South,Furniture,3,898.95,520.31
+1098,2024-11-29,C022,Active,South,Furniture,1,566.46,335.38
+1099,2024-12-06,C014,Active,North,Furniture,5,692.32,526.1
+1100,2024-12-13,C005,Pending,North,Furniture,13,831.93,463.57
+1101,2024-12-20,C015,Active,North,Furniture,4,832.4,508.35
+1102,2024-12-27,C017,,East,Electronics,10,318.56,217.02
+1103,2025-01-03,C014,Active,South,Office Supplies,8,1033.17,588.88
+1104,2025-01-10,C020,,South,Furniture,1,150.04,116.5
+1105,2025-01-17,C005,Active,West,Office Supplies,10,225.46,149.79
+1106,2025-01-24,C012,Pending,North,Office Supplies,1,24.01,12.78
+1107,2025-01-31,C016,Active,South,Furniture,12,192.71,139.01
+1108,2025-02-07,C016,,East,Electronics,4,720.29,459.14
+1109,2025-02-14,C021,Active,North,Furniture,8,917.03,587.36
+1110,2025-02-21,C007,Active,North,Electronics,5,1195.55,737.04
+1111,2025-02-28,C004,,North,Office Supplies,2,177.91,110.95
+1112,2025-03-07,C001,Active,North,Electronics,6,1279.08,952.16
+1113,2025-03-15,C005,Inactive,West,Electronics,5,1124.04,501.71
+1114,2025-03-22,C023,Inactive,West,Electronics,2,624.61,343.82
+1115,2025-03-29,C010,Active,East,Office Supplies,13,1400.75,607.89
+1116,2025-04-05,C022,Inactive,West,Office Supplies,14,1486.58,1098.52
+1117,2025-04-12,C005,Active,West,Electronics,11,323.4,168.99
+1118,2025-04-19,C004,Pending,North,Electronics,11,581.26,467.24
+1119,2025-04-26,C002,Active,West,Furniture,11,1391.15,886.11
+1120,2025-05-03,C020,Active,South,Electronics,3,1087.96,827.22
+1121,2025-05-10,C010,,West,Furniture,9,91.18,76.64
+1122,2025-05-17,C019,Pending,West,Electronics,7,1176.64,915.31
+1123,2025-05-24,C001,Active,South,Furniture,7,1245.35,984.01
+1124,2025-05-31,C024,Inactive,North,Office Supplies,11,1130.74,659.89
+1125,2025-06-07,C005,Active,North,Electronics,6,1203.31,780.08
+1126,2025-06-14,C013,Active,South,Electronics,8,1241.2,638.29
+1127,2025-06-21,C004,Active,West,Electronics,4,295.88,144.46
+1128,2025-06-28,C016,Active,West,Electronics,8,368.82,231.43
+1129,2025-07-05,C024,Active,North,Furniture,4,957.96,639.7
+1130,2025-07-12,C016,Active,South,Electronics,8,1363.64,753.65
+1131,2025-07-19,C023,,South,Office Supplies,9,487.97,320.23
+1132,2025-07-27,C002,,North,Office Supplies,3,890.69,711.98
+1133,2025-08-03,C017,Inactive,North,Electronics,3,1030.81,670.57
+1134,2025-08-10,C020,Active,South,Office Supplies,11,688.88,499.0
+1135,2025-08-17,C024,Active,West,Electronics,13,1076.4,820.64
+1136,2025-08-24,C012,Pending,South,Electronics,2,1351.51,1141.93
+1137,2025-08-31,C018,Inactive,South,Office Supplies,13,943.67,633.62
+1138,2025-09-07,C003,Active,East,Electronics,10,818.88,624.87
+1139,2025-09-14,C001,Pending,South,Office Supplies,3,669.34,557.69
+1140,2025-09-21,C001,Pending,West,Furniture,3,874.68,721.6
+1141,2025-09-28,C019,Pending,West,Electronics,5,545.94,253.04
+1142,2025-10-05,C011,Inactive,North,Furniture,5,599.39,349.37
+1143,2025-10-12,C005,Inactive,South,Office Supplies,2,807.15,440.54
+1144,2025-10-19,C012,Active,South,Furniture,12,118.6,52.08
+1145,2025-10-26,C003,Pending,North,Furniture,10,358.96,245.87
+1146,2025-11-02,C001,Pending,North,Office Supplies,13,823.42,602.05
+1147,2025-11-09,C001,Active,East,Furniture,6,658.66,514.85
+1148,2025-11-16,C008,Active,South,Furniture,5,512.57,233.35
+1149,2025-11-23,C010,Active,North,Office Supplies,6,1101.21,874.8
+1150,2025-12-01,C011,Pending,North,Furniture,1,1046.7,721.51
