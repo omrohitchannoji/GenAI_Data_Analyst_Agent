@@ -124,6 +124,7 @@ class AgentState(TypedDict):
     generated_sql: Optional[str]
     sql_result: Optional[List[Dict[str, Any]]]
     sql_columns: Optional[List[str]]
+    is_truncated: bool
     validation_status: str  # "valid", "invalid", "rejected", "empty"
     validation_error: Optional[str]
     retry_count: int        # Max 2 repairs (3 total SQL attempts)

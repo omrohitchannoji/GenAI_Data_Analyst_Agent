@@ -1,16 +1,16 @@
-# backend/main.py
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 import sqlite3
-import os, json, time
+import os, json, time, io, uuid
 from app.services.llm_agent import generate_llm_explanation
 from app.services.query_engine import run_sql_with_correction, question_to_sql_with_memory
 from app.core.utils import detect_column_types  # keep utils minimal: detect_column_types
 from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
+from app.services.query_executor import execute_query_safely
 import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
@@ -27,7 +27,8 @@ app.add_middleware(
 )
 
 stored_column_types = None
-DB_FILE = "uploaded_data.db"
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DB_FILE = os.path.join(BACKEND_DIR, "uploaded_data.db")
 
 class UserQuery(BaseModel):
     question: str
@@ -38,19 +39,20 @@ class SQLRequest(BaseModel):
 
 def run_sql_query(sql: str):
     """
-    Execute a SQL query against SQLite DB.
-    Returns pandas.DataFrame or error string.
+    Execute a SQL query against SQLite DB using the guarded, read-only executor.
+    Guarantees AST safety, read-only permissions, and 10s deadline.
     """
     try:
         if not os.path.exists(DB_FILE):
             return "Database not found. Upload a CSV with /upload_csv first."
-        sql_checked = sql.strip()
-        if not sql_checked.lower().startswith("select"):
-            return "Only SELECT queries are allowed."
-        conn = sqlite3.connect(DB_FILE)
-        df = pd.read_sql_query(sql, conn)
-        conn.close()
-        return df
+        res = execute_query_safely(
+            db_path=os.path.abspath(DB_FILE),
+            sql=sql,
+            allowed_tables=["data"]
+        )
+        if not res["success"]:
+            return f"SQL Error: {res.get('error', 'Execution failed')}"
+        return pd.DataFrame(res["rows"])
     except Exception as e:
         return f"SQL Error: {str(e)}"
 
@@ -73,13 +75,13 @@ def health_check():
     }
 
 @app.post("/query", response_model=QueryResponse)
-def query_agent(request: QueryRequest):
+def query_agent(request: QueryRequest, raw_req: Request = None):
     """
     Stateful Agentic AI Data Analyst query endpoint.
     Orchestrates intent planning, AST SQL validation, read-only execution,
     bounded repair, deterministic analytics, and grounded executive explanation.
     """
-    principal_id = "demo_user"
+    principal_id = raw_req.headers.get("x-principal-id", "demo_user") if raw_req else "demo_user"
     # Enforce rate limit
     default_limiter.check(principal_id)
 
@@ -113,7 +115,7 @@ def query_agent(request: QueryRequest):
             columns=res.get("sql_columns") or [],
             rows=res.get("sql_result") or [],
             row_count=len(res.get("sql_result") or []),
-            is_truncated=False
+            is_truncated=res.get("is_truncated", False)
         )
 
     chart_cfg = None
@@ -163,17 +165,25 @@ def query_agent(request: QueryRequest):
     )
 
 @app.post("/upload_csv")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(request: Request, file: UploadFile = File(...)):
     """
-    Upload a CSV, detect column types, register dataset, and save to sqlite.
+    Upload a CSV, validate size (10 MiB limit), detect column types,
+    register dataset under authorized principal, and save to SQLite.
     """
     global stored_column_types
     if not file.filename.lower().endswith(".csv"):
         return {"error": "Please upload a CSV file"}
 
+    from app.core.dataset_registry import MAX_UPLOAD_SIZE_BYTES
+    content = await file.read()
+    if len(content) == 0:
+        return {"error": "Uploaded file is empty."}
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        return {"error": f"File size exceeds maximum allowed limit of {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MiB."}
+
     try:
-        # Read CSV
-        df = pd.read_csv(file.file)
+        # Read CSV safely from memory bytes
+        df = pd.read_csv(io.BytesIO(content))
 
         # Detect column types
         raw_types = detect_column_types(df)
@@ -183,18 +193,34 @@ async def upload_csv(file: UploadFile = File(...)):
             "date_columns": raw_types.get("date", [])
         }
 
+        # Resolve principal ID and generate unique dataset identifier
+        principal_id = request.headers.get("x-principal-id", "demo_user")
+        dataset_id = f"ds_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        table_name = f"data_{dataset_id}"
+
         # Save to SQLite
         conn = sqlite3.connect(DB_FILE)
-        df.to_sql("data", conn, if_exists="replace", index=False)
+        df.to_sql(table_name, conn, if_exists="replace", index=False)
+        # Also populate default table for backward compatibility if demo_user
+        if principal_id == "demo_user":
+            df.to_sql("data", conn, if_exists="replace", index=False)
+            default_registry.register_dataset(
+                dataset_id="default",
+                principal_id="demo_user",
+                filename=file.filename,
+                table_name="data",
+                db_path=os.path.abspath(DB_FILE),
+                row_count=len(df),
+                column_types=stored_column_types
+            )
         conn.close()
 
-        # Register in dataset registry
-        dataset_id = "default"
+        # Register isolated dataset in registry
         default_registry.register_dataset(
             dataset_id=dataset_id,
-            principal_id="demo_user",
+            principal_id=principal_id,
             filename=file.filename,
-            table_name="data",
+            table_name=table_name,
             db_path=os.path.abspath(DB_FILE),
             row_count=len(df),
             column_types=stored_column_types

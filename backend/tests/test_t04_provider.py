@@ -43,9 +43,15 @@ def test_pydantic_contracts_instantiation():
     assert res.chart.chart_type == "bar"
 
 def test_groq_structured_generation():
-    provider = GroqProvider()
-    prompt = "Classify this question: 'What is the average revenue by region?' Return category 'aggregation' and confidence_score 0.95."
-    result = provider.generate_structured(MockTestSchema, prompt)
+    import pytest
+    try:
+        provider = GroqProvider()
+        prompt = "Classify this question: 'What is the average revenue by region?' Return category 'aggregation' and confidence_score 0.95."
+        result = provider.generate_structured(MockTestSchema, prompt)
+    except Exception as e:
+        if "401" in str(e) or "invalid_api_key" in str(e) or "GROQ_API_KEY" in str(e):
+            pytest.skip(f"Skipping live Groq API test: {str(e)}")
+        raise
 
     assert result is not None
     assert isinstance(result.data, MockTestSchema)

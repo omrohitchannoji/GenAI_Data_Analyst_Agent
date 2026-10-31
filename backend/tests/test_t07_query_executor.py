@@ -7,10 +7,17 @@ sys.path.insert(0, backend_dir)
 from app.services.query_executor import execute_query_safely
 
 def test_query_executor_suite():
-    db_path = os.path.join(backend_dir, "uploaded_data.db")
-    if not os.path.exists(db_path):
-        print(f"Skipping test, db not found at {db_path}")
-        return
+    import tempfile, sqlite3
+    db_path = os.path.join(tempfile.gettempdir(), "test_t07_executor.db")
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE data (Contract TEXT, MonthlyCharges REAL, customerID TEXT);")
+    rows = [("Month-to-month", 50.0 + i, f"C{i}") for i in range(50)]
+    conn.executemany("INSERT INTO data VALUES (?, ?, ?);", rows)
+    conn.commit()
+    conn.close()
 
     allowed_tables = ["data"]
 

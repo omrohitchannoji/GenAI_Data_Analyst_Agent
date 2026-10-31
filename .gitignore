@@ -12,6 +12,7 @@ venv/
 .pytest_cache/
 mlruns/
 .streamlit/
-.vscode/
 PROJECT_EXPLANATION_AND_INTERVIEW_PREP.md
+AI_ENGINEER_READINESS_REVIEW.md
+PROJECT_STUDY_PLAN_10_DAYS.md
 *.pem

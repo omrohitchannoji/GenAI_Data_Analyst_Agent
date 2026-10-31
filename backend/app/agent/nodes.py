@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import pandas as pd
 from typing import Dict, Any, List, Optional
@@ -56,6 +57,7 @@ def validate_scope_node(state: AgentState) -> Dict[str, Any]:
 
     try:
         schema = inspect_dataset_schema(db_path, table_name)
+        schema["db_path"] = db_path
     except Exception as e:
         events.append({"stage": "scope_validation", "timestamp": time.time(), "status": "schema_error"})
         return {
@@ -244,10 +246,7 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
     sql = state.get("generated_sql", "")
 
     # Locate database path
-    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    default_db = os.path.join(backend_dir, "uploaded_data.db")
-    ds_meta = default_registry.get_dataset(state.get("dataset_id", "default"), state.get("principal_id", "demo_user"))
-    db_path = ds_meta["db_path"] if ds_meta else default_db
+    db_path = schema.get("db_path") or (ds_meta["db_path"] if ds_meta else default_db)
 
     # Execute with safety checks
     exec_res = execute_query_safely(
@@ -285,11 +284,18 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
             "execution_events": events
         }
 
+    warnings = list(state.get("warnings", []))
+    is_truncated = exec_res.get("is_truncated", False)
+    if is_truncated:
+        warnings.append(f"Result set truncated to {exec_res.get('row_count')} rows (display limit exceeded).")
+
     events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "success", "rows": exec_res["row_count"]})
     return {
         "validation_status": "valid",
         "sql_result": exec_res["rows"],
         "sql_columns": exec_res["columns"],
+        "is_truncated": is_truncated,
+        "warnings": warnings,
         "execution_events": events
     }
 
@@ -364,18 +370,28 @@ def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
     chart_config: Dict[str, Any] = {}
     analysis_result: Dict[str, Any] = {}
 
+    warnings = list(state.get("warnings", []))
+    if state.get("is_truncated"):
+        warnings.append("Computed statistics reflect a truncated result set (1,000 row cap). Complete dataset aggregations should use SQL aggregate functions.")
+
     try:
         # Determine chart type deterministically
         chart_type = suggest_chart(df)
 
-        if df.shape[1] == 1:
-            # Scalar metric
+        if df.shape[1] == 1 and len(df) == 1:
+            # True scalar metric
             val = df.iloc[0, 0]
             col_name = df.columns[0]
+            try:
+                numeric_val = float(val)
+                val_formatted = int(numeric_val) if numeric_val.is_integer() else round(numeric_val, 2)
+            except (ValueError, TypeError):
+                val_formatted = str(val)
+
             metrics.append({
                 "fact_id": "F1",
                 "metric_name": col_name,
-                "value": round(float(val), 2) if isinstance(val, (int, float)) else str(val),
+                "value": val_formatted,
                 "scope": "scalar"
             })
             chart_config = {
@@ -383,6 +399,54 @@ def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
                 "x": None,
                 "y": col_name,
                 "title": f"Summary: {col_name}"
+            }
+        elif df.shape[1] == 1 and len(df) > 1:
+            # Multirow single-column series / distribution (Issue 3 fix)
+            col_name = df.columns[0]
+            s = df[col_name]
+            numeric_s = pd.to_numeric(s, errors="coerce")
+
+            metrics.append({
+                "fact_id": "F1",
+                "metric_name": f"total_{col_name}_count",
+                "value": len(df),
+                "scope": col_name
+            })
+            if numeric_s.notna().sum() > 0:
+                mean_val = float(numeric_s.dropna().mean())
+                min_val = float(numeric_s.dropna().min())
+                max_val = float(numeric_s.dropna().max())
+                metrics.append({
+                    "fact_id": "F2",
+                    "metric_name": f"average_{col_name}",
+                    "value": round(mean_val, 2),
+                    "scope": col_name
+                })
+                metrics.append({
+                    "fact_id": "F3",
+                    "metric_name": f"range_{col_name}",
+                    "value": f"{round(min_val, 2)} - {round(max_val, 2)}",
+                    "scope": col_name
+                })
+            else:
+                sample_items = [str(x) for x in s.dropna().unique()[:5]]
+                metrics.append({
+                    "fact_id": "F2",
+                    "metric_name": "distinct_count",
+                    "value": len(s.unique()),
+                    "scope": col_name
+                })
+                metrics.append({
+                    "fact_id": "F3",
+                    "metric_name": "sample_values",
+                    "value": ", ".join(sample_items),
+                    "scope": col_name
+                })
+            chart_config = {
+                "chart_type": "table",
+                "x": None,
+                "y": col_name,
+                "title": f"Values of {col_name}"
             }
         else:
             # Grouped analytics
@@ -425,6 +489,7 @@ def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
             "analysis_result": analysis_result,
             "metrics": metrics,
             "chart_config": chart_config,
+            "warnings": warnings,
             "execution_events": events
         }
 
@@ -470,16 +535,56 @@ RULES:
         result = provider.generate_structured(InsightNarrativeOutput, prompt)
         narrative: InsightNarrativeOutput = result.data
 
-        # R11 Fact Grounding Check: Validate fact IDs
+        # R11 Fact Grounding Check: Validate fact IDs & numerical claims (Issue 2 fix)
         valid_fact_ids = {m["fact_id"] for m in metrics}
         warnings = list(state.get("warnings", []))
-        if narrative.fact_ids_used and not set(narrative.fact_ids_used).issubset(valid_fact_ids):
-            warnings.append("Unverified fact reference detected in model narrative; reverting to deterministic facts.")
-            fact_bullets = "\n".join(f"- {m['metric_name']}: {m['value']}" for m in metrics)
-            final_text = f"**Analytical Summary (Deterministic Grounding):**\n{fact_bullets}\n\n**Recommendation:** {narrative.recommendation}"
+        fact_bullets = "\n".join(f"- **{m['metric_name']}**: {m['value']}" for m in metrics) if metrics else "- No numeric aggregates available."
+
+        # Check 1: Fact ID subset validation
+        unverified_fact_ids = bool(narrative.fact_ids_used and not set(narrative.fact_ids_used).issubset(valid_fact_ids))
+
+        # Check 2: Numerical claims validation against computed metrics & analysis
+        combined_text = f"{narrative.executive_summary} {' '.join(narrative.key_observations)}"
+        claimed_numbers = [float(n) for n in re.findall(r"\b\d+(?:\.\d+)?\b", combined_text)]
+
+        allowed_numbers = set()
+        for m in metrics:
+            for n in re.findall(r"\b\d+(?:\.\d+)?\b", str(m.get("value", ""))):
+                allowed_numbers.add(round(float(n), 2))
+        for k, v in analysis.items():
+            if isinstance(v, (int, float)):
+                allowed_numbers.add(round(float(v), 2))
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        for sub_v in item.values():
+                            if isinstance(sub_v, (int, float)):
+                                allowed_numbers.add(round(float(sub_v), 2))
+
+        context_nums = set(re.findall(r"\b\d+(?:\.\d+)?\b", f"{question} {sql}"))
+        has_hallucinated_num = False
+        for c_num in claimed_numbers:
+            rounded_c = round(c_num, 2)
+            # Ignore trivial structural counters or numbers present in question/sql context
+            if str(int(c_num)) in context_nums or str(c_num) in context_nums or c_num in [0.0, 1.0, 2.0, 3.0]:
+                continue
+            if not any(abs(rounded_c - a) < 0.05 or (a != 0 and abs(rounded_c - a) / abs(a) < 0.02) for a in allowed_numbers):
+                has_hallucinated_num = True
+                warnings.append(f"Unverified numeric claim '{c_num}' detected in model narrative; reverting to deterministic facts.")
+                break
+
+        if unverified_fact_ids or has_hallucinated_num:
+            if unverified_fact_ids:
+                warnings.append("Unverified fact reference detected in model narrative; reverting to deterministic facts.")
+            final_text = (
+                f"**Executive Summary:** {narrative.executive_summary}\n\n"
+                f"**Verified Analytical Facts (Deterministic Grounding):**\n{fact_bullets}\n\n"
+                f"**Recommendation:** {narrative.recommendation}"
+            )
         else:
             final_text = (
                 f"**Executive Summary:** {narrative.executive_summary}\n\n"
+                f"**Verified Facts (Pandas Grounded):**\n{fact_bullets}\n\n"
                 f"**Key Observations:**\n" + "\n".join(f"- {o}" for o in narrative.key_observations) + "\n\n"
                 f"**Recommendation:** {narrative.recommendation}"
             )

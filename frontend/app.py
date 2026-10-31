@@ -204,12 +204,19 @@ with tab2:
         elif status == "success":
             st.success("✅ Analysis Succeeded!")
 
+            # Display any advisory warnings or truncation notices
+            result_obj = res_data.get("result", {})
+            warnings_list = res_data.get("warnings", [])
+            if result_obj and result_obj.get("is_truncated"):
+                st.warning("⚠️ **Result Truncated:** The query returned more rows than the 1,000 display cap. The data and charts below reflect the top 1,000 rows.")
+            for w in warnings_list:
+                st.info(f"ℹ️ {w}")
+
             if res_data.get("sql"):
                 st.markdown("**Validated SQLite Query (AST Checked):**")
                 st.code(res_data["sql"], language="sql")
 
-            result_obj = res_data.get("result", {})
-            rows = result_obj.get("rows", [])
+            rows = result_obj.get("rows", []) if result_obj else []
             if rows:
                 st.markdown("**Query Results:**")
                 df_res = pd.DataFrame(rows)

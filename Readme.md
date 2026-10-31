@@ -7,7 +7,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B.svg)](https://streamlit.io)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-A production-grade, stateful **Agentic AI Data Analyst** that converts business questions into secure, validated SQL, deterministically computes analytical metrics and interactive charts, and delivers grounded, consulting-style executive narratives.
+An evidence-based, stateful **Agentic AI Data Analyst** that converts business questions into secure, validated SQL, deterministically computes analytical metrics and interactive charts, and delivers grounded, consulting-style executive narratives.
 
 Built with a **single-agent LangGraph state machine**, strict **`sqlglot` AST security parsing**, **read-only SQLite query sandboxing**, and **durable session checkpoints (`SqliteSaver`)**.
 
@@ -71,7 +71,7 @@ The system strictly divides responsibilities between **Probabilistic LLM Reasoni
 * **SQL Generation & Bounded Self-Repair:** Generates clean SQLite queries. If execution or validation errors occur, it diagnoses errors and repairs SQL (strictly bounded to $\le 2$ repair retries, 3 attempts total).
 * **Executive Explanations:** Synthesizes business context, observations, and recommendations grounded strictly in computed facts.
 
-### 2. Deterministic Code (Zero Hallucination)
+### 2. Deterministic Code (Grounded Fact Verification)
 * **`sqlglot` AST Security Policy:** Analyzes query Abstract Syntax Trees before execution. Blocks all DDL/DML (`DROP`, `INSERT`, `UPDATE`, `ALTER`, `ATTACH`), stacked statements (`;`), system PRAGMAs, and open `SELECT *` wildcards.
 * **Read-Only SQLite Execution:** Queries run against URI connection strings in `mode=ro` with an active `progress_handler` timeout (10-second hard deadline).
 * **Statistical Insights Engine:** Computes SUM, AVG, MIN, MAX, standard deviation, percentage contributions, and trend shapes deterministically in Pandas.
@@ -96,25 +96,26 @@ Every execution terminates in one of five well-defined contract states:
 
 ## 🏆 Evaluation Benchmark & Scorecard
 
-Evaluated against an exhaustive **40-Question End-to-End Test Suite** (`backend/eval/eval_suite.py`) spanning 8 analytical categories on real-world Telco Churn and Sales data:
+Evaluated against a **40-Question End-to-End Test Suite** (`backend/eval/eval_suite.py`) spanning 6 analytical categories on real-world Telco Churn and Sales data. The benchmark implements a **two-tier grading methodology**:
+1. **Tier 1 (Contract Compliance):** Verifies that the agent terminates in the expected contract status (`success`, `empty`, `needs_clarification`, `rejected`).
+2. **Tier 2 (Semantic Data Validation):** Checks result set row counts against expected bounds, ensures analytical queries return non-empty datasets, verifies empty queries return strictly 0 rows, and requires self-repair cases to achieve full query recovery.
 
-| Category | Questions | Passed | Success Rate | Baseline Pass Rate |
-|---|---|---|---|---|
-| **Simple Aggregation** | 5 | 5 | **100%** | 80% |
-| **Grouping & Top-N** | 5 | 5 | **100%** | 80% |
-| **Multi-Column Filtering** | 5 | 5 | **100%** | 60% |
-| **Domain Glossary Mapping** | 5 | 5 | **100%** | 20% |
-| **Multi-Turn Context Follow-Ups** | 5 | 5 | **100%** | 0% (Stateless) |
-| **Security & Injection Attack** | 5 | 5 | **100%** | 0% (Arbitrary fallback execution) |
-| **Edge Cases & Empty Results** | 5 | 4 | **80%** | 40% |
-| **Ambiguity & Clarification** | 5 | 4 | **80%** | 20% |
-| **TOTAL** | **40** | **38** | **95.0%** | **37.5%** |
+| Category | Cases | Passed | Accuracy (%) | Key Finding |
+|---|---:|---:|---:|---|
+| **1. Aggregations, Grouping & Ranking** | 12 | 12 | **100%** | Valid SQL generation without `SELECT *`. Groupings and aggregations match schema. |
+| **2. Dates & Comparison Arithmetic** | 6 | 6 | **100%** | Numerical comparison boundaries (`between`, `>=`, `<=`) correctly parsed. |
+| **3. Glossary RAG & Multi-Turn Follow-Ups** | 6 | 6 | **100%** | Follow-up context (`prior_context`) preserved across turns. Glossary definitions applied accurately. |
+| **4. Ambiguity, Empty Results & Rejections** | 6 | 5 | **83.3%** | Ambiguous questions trigger `needs_clarification`. Non-analytical questions rejected. |
+| **5. SQL Safety & Access Isolation** | 6 | 6 | **100%** | `DROP TABLE`, stacked statements, `DELETE`, `UPDATE`, wildcards (`SELECT *`), and unauthorized tables blocked by AST. |
+| **6. Repair Recovery & Edge Cases** | 4 | 3 | **75.0%** | Recovered from schema column misalignments; bounded to 2 retries. |
+| **TOTAL** | **40** | **38** | **95.0%** | Verified against two-tier contract and semantic assertions. |
 
 ### Key Improvements Over Baseline
-1. **Security:** Malicious queries like `DROP TABLE data` are blocked at the AST validator (`rejected`), preventing catastrophic data loss or erratic fallback queries.
+1. **Security:** Malicious queries like `DROP TABLE data` are blocked at the AST validator (`rejected`), preventing data manipulation or erratic fallback queries.
 2. **Multi-Turn Memory:** Conversational follow-ups (*"Filter that only for Fiber optic"* or *"Break that down by Contract"*) resolve using prior turn SQL and filters via durable `SqliteSaver` checkpoints.
-3. **Domain Glossary:** Acronyms like `ARPU` or `churn rate` resolve to accurate database column formulas rather than hallucinated column names.
-4. **Zero Metric Hallucination:** All numbers reported in the executive summary match the Pandas computation to two decimal places.
+3. **Domain Glossary:** Acronyms like `ARPU` or `churn rate` resolve to verified database column formulas rather than hallucinated column names.
+4. **Grounded Fact Verification:** Numbers reported in the executive summary are deterministically validated against Pandas computations, reverting to deterministic facts if ungrounded numerical claims are detected.
+5. **Dataset Isolation & Truncation Guardrails:** Uploads receive distinct dataset IDs and table namespaces; queries capped at 1,000 rows carry explicit truncation warnings through the state machine to prevent partial-data misinterpretation.
 
 ---
 
@@ -270,8 +271,10 @@ python backend/eval/eval_suite.py
 1. **AST Validation vs. Regex:** Traditional regex checks (`if "DROP" in query`) are trivially bypassed by comments or string literals (e.g. `WHERE status = 'DROPPED'`). This agent uses `sqlglot` to parse the Abstract Syntax Tree, strictly permitting only `Select` and `CTE` roots.
 2. **SQLite Read-Only Pragmas:** The database file is opened with `file:...mode=ro` flags. Even if a statement bypassed AST checks, the SQLite storage engine raises an operational error on any write operation.
 3. **Execution Deadlines:** Large cross-joins or infinite query loops are interrupted via SQLite's `set_progress_handler` every 10,000 instructions, terminating execution if runtime exceeds 10 seconds.
-4. **Row Truncation:** Result sets are capped at 1,000 rows for serialization and display, preventing memory exhaustion and UI lockups.
-5. **Rate Limiting:** Sliding-window in-memory rate limiter enforces 20 requests per 60-second window per IP.
+4. **Row Truncation & State Propagation:** Result sets exceeding 1,000 rows are capped for serialization and display. Explicit `is_truncated` state flags and UI warnings prevent partial results from being misinterpreted as full-dataset statistics.
+5. **Dataset Isolation & Upload Limits:** File uploads are enforced with a 10 MiB size limit before memory ingestion and partitioned into unique dataset IDs and isolated SQLite tables.
+6. **Unified SQL Protections:** All SQL execution pathways (including direct `/run_sql` endpoints) run through the AST-guarded, read-only executor.
+7. **Rate Limiting:** Sliding-window in-memory rate limiter enforces 20 requests per 60-second window per IP.
 
 ---
 
@@ -281,7 +284,7 @@ python backend/eval/eval_suite.py
 Multi-agent swarms introduce compounding non-determinism, unpredictable token consumption, and complex debugging surfaces for a single-domain task. This project uses a **single-agent cyclic state machine (LangGraph)** with explicit conditional edges (`should_repair`, `route_intent`). State is strictly typed, transitions are deterministic, and repair loops are capped at 2 iterations.
 
 ### Why not execute raw Python code generated by the LLM?
-Executing arbitrary Python code generated by an LLM in a production analytical app is a major remote code execution (RCE) risk requiring complex gVisor or Docker sandboxes. By restricting the LLM to **pure SQL generation** validated via AST, and running **deterministic Pandas calculations** in the host runtime, the system is 100% secure, reproducible, and verifiable.
+Executing arbitrary Python code generated by an LLM in an analytical app is a major remote code execution (RCE) risk requiring complex gVisor or Docker sandboxes. By restricting the LLM to **pure SQL generation** validated via AST, and running **deterministic Pandas calculations** in the host runtime, the system achieves defense-in-depth security, deterministic reproducibility, and auditable verification.
 
 ### How are multi-turn conversations handled?
 User conversations are identified by `session_id`. The LangGraph workflow persists states via an SQLite checkpointer (`SqliteSaver`). When a follow-up query is received (e.g., *"Filter only for contract month-to-month"*), the planner inspects `prior_context` and reformulates the SQL using the previous query's dimensions and filters. Switching datasets automatically clears prior context to prevent cross-dataset contamination.

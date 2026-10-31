@@ -199,6 +199,7 @@ def run_agent_turn(
         "generated_sql": None,
         "sql_result": None,
         "sql_columns": None,
+        "is_truncated": False,
         "validation_status": "pending",
         "validation_error": None,
         "retry_count": 0,
