@@ -123,6 +123,9 @@ Evaluated against a **40-Question End-to-End Test Suite** (`backend/eval/eval_su
 
 ```
 data_analyst_agent/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                     # GitHub Actions CI (runs 24 offline tests + eval replay)
 ├── backend/
 │   ├── app/
 │   │   ├── agent/
@@ -131,12 +134,13 @@ data_analyst_agent/
 │   │   │   ├── state.py               # Typed Pydantic models (AgentState, QueryRequest, QueryResponse)
 │   │   │   └── tools.py               # Structured LLM tool schemas & fallback parsers
 │   │   ├── core/
-│   │   │   ├── config.py              # Application settings (Pydantic Settings)
+│   │   │   ├── auth.py                # HMAC-SHA256 JWT authentication & principal identity derivation
 │   │   │   ├── dataset_registry.py    # Multi-tenant dataset tracking, authorization & size caps
 │   │   │   ├── logger.py              # Structured JSON logging
 │   │   │   ├── rate_limiter.py        # Sliding-window rate limiter (20 req / 60s)
 │   │   │   ├── schema_inspector.py    # SQLite table and column introspection
-│   │   │   └── sql_validator.py       # sqlglot AST security parser
+│   │   │   ├── sql_validator.py       # sqlglot AST security parser
+│   │   │   └── utils.py               # Column type detection & date coercion
 │   │   ├── services/
 │   │   │   ├── glossary.py            # SQLite-backed Business Glossary RAG
 │   │   │   ├── insights_engine.py     # Deterministic Pandas metrics & Plotly chart logic
@@ -146,8 +150,18 @@ data_analyst_agent/
 │   │   │       └── groq_provider.py   # Groq provider with structured JSON mode & token accounting
 │   │   └── main.py                    # FastAPI application & REST endpoints
 │   ├── eval/
-│   │   ├── fixtures/                  # Benchmark datasets (sales_data.csv)
-│   │   └── eval_suite.py              # 40-question automated evaluation runner
+│   │   ├── fixtures/                  # Benchmark datasets (telco_churn_data.csv)
+│   │   ├── benchmark_results.json     # Recorded 40-case evaluation run (openai/gpt-oss-120b)
+│   │   ├── offline_replay_results.json# Deterministic offline replay output (38/40, 95.0%)
+│   │   ├── generate_fixtures.py       # Deterministic fixture generator
+│   │   ├── eval_report.md             # Benchmark report, latency provenance, & failure analysis
+│   │   └── eval_suite.py              # 40-question automated evaluation runner (--replay / --live)
+│   ├── rag/                           # Legacy/deferred v1 vector RAG prototype (unused by active agent)
+│   ├── tests/                         # Automated test suite (24 passing offline tests, 5 live tests)
+│   │   ├── test_auth_and_isolation.py # Signed JWT verification & cross-tenant dataset isolation
+│   │   ├── test_offline_eval_replay.py# Pytest test wrapping the 40-case offline replay
+│   │   ├── test_offline_regressions.py# Grounding verification, scalar checks, size limits
+│   │   └── test_t04_provider.py ...   # Unit & integration tests with explicit live test skipping
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
@@ -254,15 +268,39 @@ streamlit run app.py --server.port 8501
 
 ## 🧪 Running the Test Suite & Evaluation
 
-The repository includes complete test coverage across all architectural boundaries:
+The repository includes a targeted test suite covering security AST parsing, database isolation, signed token authentication, and grounded fact verification:
 
+### 1. Offline Test Suite (Zero External Credentials Required)
+Runs all 24 unit, security, and offline regression tests. Live Groq tests explicitly skip with informative reasons:
 ```bash
-# Run unit & integration tests
-pytest tests/ -v
-
-# Run the 40-question end-to-end benchmark suite
-python backend/eval/eval_suite.py
+# Run from repository root
+pytest backend/tests/ -v -rs
 ```
+
+### 2. 40-Case Evaluation Suite
+
+- **Offline Deterministic Replay (Recommended for CI / Local Review):**
+  Replays recorded model outputs against local benchmark database fixtures (`backend/eval/fixtures/eval_benchmark.db`), exercising real AST validation, SQLite execution, and two-tier contract compliance without API calls:
+  ```bash
+  python backend/eval/eval_suite.py --replay
+  ```
+  *Result: 38/40 Passed (95.0%). Replay completes deterministically in <2 seconds.*
+
+- **Live Model Evaluation (Requires Groq API Key):**
+  Executes full end-to-end turns against the live Groq LLM API (`openai/gpt-oss-120b`):
+  ```bash
+  python backend/eval/eval_suite.py --live
+  ```
+  *Provenance: Recorded benchmark on 2026-09-29 achieved 38/40 (95.0%) with average turn latency of 19.69s (p50: 22.02s, p95: 30.21s).*
+
+---
+
+## 🔄 Continuous Integration (GitHub Actions)
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`:
+1. Sets up Python 3.11 and installs project dependencies from `backend/requirements.txt`.
+2. Executes `pytest backend/tests/ -v -rs` (24 offline tests passing, live tests cleanly skipped).
+3. Executes `python backend/eval/eval_suite.py --replay` (verifies 38/40 benchmark score deterministically).
 
 ---
 
@@ -272,9 +310,10 @@ python backend/eval/eval_suite.py
 2. **SQLite Read-Only Pragmas:** The database file is opened with `file:...mode=ro` flags. Even if a statement bypassed AST checks, the SQLite storage engine raises an operational error on any write operation.
 3. **Execution Deadlines:** Large cross-joins or infinite query loops are interrupted via SQLite's `set_progress_handler` every 10,000 instructions, terminating execution if runtime exceeds 10 seconds.
 4. **Row Truncation & State Propagation:** Result sets exceeding 1,000 rows are capped for serialization and display. Explicit `is_truncated` state flags and UI warnings prevent partial results from being misinterpreted as full-dataset statistics.
-5. **Dataset Isolation & Upload Limits:** File uploads are enforced with a 10 MiB size limit before memory ingestion and partitioned into unique dataset IDs and isolated SQLite tables.
-6. **Unified SQL Protections:** All SQL execution pathways (including direct `/run_sql` endpoints) run through the AST-guarded, read-only executor.
-7. **Rate Limiting:** Sliding-window in-memory rate limiter enforces 20 requests per 60-second window per IP.
+5. **Signed-Token Authentication & Tenant Isolation:** User identity is established via HMAC-SHA256 signed JWT bearer tokens (`/auth/token`). The identity boundary derives `principal_id` strictly from cryptographically verified token claims (`sub`); raw client headers like `x-principal-id` are ignored to prevent header spoofing. Datasets in `dataset_registry.db` are isolated per principal. For local/demo environments, requests without tokens fall back to `"demo_user"` when `ALLOW_DEMO_ANONYMOUS=true`.
+6. **Dataset Isolation & Upload Limits:** File uploads are enforced with a 10 MiB size limit before memory ingestion and partitioned into unique dataset IDs and isolated SQLite tables.
+7. **Unified SQL Protections:** All SQL execution pathways (including direct `/run_sql` endpoints) run through the AST-guarded, read-only executor.
+8. **Rate Limiting:** Sliding-window in-memory rate limiter enforces 20 requests per 60-second window per IP.
 
 ---
 

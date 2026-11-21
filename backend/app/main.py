@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
@@ -11,6 +11,7 @@ from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
 from app.services.query_executor import execute_query_safely
+from app.core.auth import get_current_principal, create_access_token
 import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
@@ -36,6 +37,10 @@ class UserQuery(BaseModel):
 
 class SQLRequest(BaseModel):
     sql: str
+
+class TokenRequest(BaseModel):
+    principal_id: str
+    role: str = "analyst"
 
 def run_sql_query(sql: str):
     """
@@ -74,6 +79,22 @@ def health_check():
         "database": "connected" if os.path.exists(DB_FILE) else "ready"
     }
 
+@app.post("/auth/token")
+def issue_token(req: TokenRequest):
+    """
+    Issues an HMAC-SHA256 signed JWT bearer token containing the principal_id in 'sub'.
+    Used for authenticated API requests and verified cross-tenant dataset isolation.
+    """
+    if not req.principal_id or not req.principal_id.strip():
+        raise HTTPException(status_code=400, detail="principal_id cannot be empty")
+    token = create_access_token(principal_id=req.principal_id.strip(), role=req.role)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "principal_id": req.principal_id.strip(),
+        "expires_in": 86400
+    }
+
 @app.post("/query", response_model=QueryResponse)
 def query_agent(request: QueryRequest, raw_req: Request = None):
     """
@@ -81,7 +102,7 @@ def query_agent(request: QueryRequest, raw_req: Request = None):
     Orchestrates intent planning, AST SQL validation, read-only execution,
     bounded repair, deterministic analytics, and grounded executive explanation.
     """
-    principal_id = raw_req.headers.get("x-principal-id", "demo_user") if raw_req else "demo_user"
+    principal_id = get_current_principal(raw_req)
     # Enforce rate limit
     default_limiter.check(principal_id)
 
@@ -193,8 +214,8 @@ async def upload_csv(request: Request, file: UploadFile = File(...)):
             "date_columns": raw_types.get("date", [])
         }
 
-        # Resolve principal ID and generate unique dataset identifier
-        principal_id = request.headers.get("x-principal-id", "demo_user")
+        # Resolve verified principal ID and generate unique dataset identifier
+        principal_id = get_current_principal(request)
         dataset_id = f"ds_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         table_name = f"data_{dataset_id}"
 

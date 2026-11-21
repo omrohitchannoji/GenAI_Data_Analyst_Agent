@@ -30,6 +30,41 @@ A comprehensive 40-question benchmark evaluation was executed against the upgrad
 | **4. Ambiguity, Empty Results & Rejections** | 6 | 5 | **83.3%** | Ambiguous questions triggered `needs_clarification`. Non-analytical questions rejected. C4_04 returned scalar count 0 as `success` (1 row). |
 | **5. SQL Safety & Access Isolation** | 6 | 6 | **100%** | `DROP TABLE`, stacked statements (`SELECT 1; DROP...`), `DELETE`, `UPDATE`, wildcards (`SELECT *`), and unauthorized tables all blocked structurally by `sqlglot`. |
 | **6. Repair Recovery & Edge Cases** | 4 | 3 | **75.0%** | Successfully recovered from column typos (`Tenures` -> `tenure`). Unknown glossary term triggered clarification. |
+| **TOTAL** | **40** | **38** | **95.0%** | Verified against two-tier contract and semantic assertions. |
+
+---
+
+### Detailed Analysis of Known Failures (2/40)
+
+1. **Case `C4_04` (Category: Ambiguity, Empty Results & Rejections):**
+   - **Question:** *"Total customers with tenure > 500"*
+   - **Expected Status:** `empty` (no customers meet this criterion; `tenure` max is 72).
+   - **Actual Result:** The model generated `SELECT COUNT(customerID) AS total_customers FROM data WHERE tenure > 500;`. In SQLite, `COUNT(*)` returns exactly 1 row containing `{"total_customers": 0}` rather than 0 rows. The pipeline marked the query status as `success` with 1 returned row.
+   - **Root Cause & Fix Recommendation:** Strict semantic expectation conflict between aggregate counting (which returns a single 0-value row) vs filter queries that return 0 rows. To address, add a prompt instruction or post-processing heuristic that maps `COUNT == 0` on filtered scans to the `empty` contract status if zero matches are expected.
+
+2. **Case `C6_01` (Category: Repair Recovery & Edge Cases):**
+   - **Question:** *"Show MonthlyCharge by Contract"*
+   - **Expected Status:** `success` (SQL generation with implicit grouping or aggregation).
+   - **Actual Result:** The planner node classified the query as ambiguous because it lacked an explicit aggregation function (e.g., `AVG`, `SUM`, or `MAX`) for `MonthlyCharge` across `Contract` categories, resulting in `needs_clarification`.
+   - **Root Cause:** Intent planner guardrail strictly requires explicit analytical metrics for grouped categorical breakdowns to prevent arbitrary aggregation assumptions.
+
+---
+
+### Evaluation Modes: Live Benchmark vs. Offline Deterministic Replay
+
+The evaluation suite (`backend/eval/eval_suite.py`) supports two distinct operational modes:
+
+1. **Live Model Benchmark:**
+   - **Command:** `python backend/eval/eval_suite.py --live`
+   - **Requirements:** Active Groq Cloud API key (`GROQ_API_KEY`).
+   - **Execution:** Invokes the live LangGraph state machine with the `openai/gpt-oss-120b` model, executing all planning, generation, validation, execution, and narrative nodes.
+   - **Latency Provenance:** Recorded run on 29 September 2026 yielded an average turn latency of 19.69s (p50: 22.02s, p95: 30.21s), reflecting multi-stage LLM generation and network latency over Groq Cloud.
+
+2. **Offline Deterministic Replay:**
+   - **Command:** `python backend/eval/eval_suite.py --replay`
+   - **Requirements:** None (no external API keys or network calls required; uses local SQLite fixtures in `backend/eval/fixtures/`).
+   - **Execution:** Replays recorded model responses through real `sqlglot` AST security validation, executes generated SQL queries against the local benchmark database (`eval_benchmark.db`), and evaluates the two-tier contract compliance and semantic data bounds.
+   - **Purpose:** Enables CI/CD pipelines and external reviewers to verify system contracts, AST security, and database execution deterministically without API costs or key dependencies. Result: **38/40 (95.0%)**.
 
 ---
 

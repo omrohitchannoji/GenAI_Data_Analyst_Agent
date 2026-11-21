@@ -43,5 +43,78 @@ def generate_sales_fixture():
     df.to_csv(fixture_path, index=False)
     print(f"Generated sales fixture with {len(df)} rows at {fixture_path}")
 
+def generate_telco_fixture():
+    output_dir = os.path.join(os.path.dirname(__file__), "fixtures")
+    os.makedirs(output_dir, exist_ok=True)
+    fixture_path = os.path.join(output_dir, "telco_churn_data.csv")
+
+    np.random.seed(42)
+    n_rows = 200
+
+    customer_ids = [f"7590-VHVEG{i:03d}" for i in range(1, n_rows + 1)]
+    genders = np.random.choice(["Female", "Male"], size=n_rows)
+    senior_citizens = np.random.choice([0, 1], size=n_rows, p=[0.84, 0.16])
+    partners = np.random.choice(["Yes", "No"], size=n_rows, p=[0.52, 0.48])
+    dependents = np.random.choice(["Yes", "No"], size=n_rows, p=[0.30, 0.70])
+    tenures = np.random.randint(1, 72, size=n_rows)
+    # Ensure some tenure >= 60 and some tenure < 6
+    tenures[0:10] = 65
+    tenures[10:20] = 3
+    tenures[20:25] = 1
+
+    phone_services = np.random.choice(["Yes", "No"], size=n_rows, p=[0.90, 0.10])
+    multiple_lines = np.random.choice(["Yes", "No", "No phone service"], size=n_rows)
+    internet_services = np.random.choice(["DSL", "Fiber optic", "No"], size=n_rows, p=[0.45, 0.40, 0.15])
+    online_securities = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    online_backups = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    device_protections = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    tech_supports = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    streaming_tvs = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    streaming_movies = np.random.choice(["Yes", "No", "No internet service"], size=n_rows)
+    contracts = np.random.choice(["Month-to-month", "One year", "Two year"], size=n_rows, p=[0.55, 0.21, 0.24])
+    paperless_billings = np.random.choice(["Yes", "No"], size=n_rows, p=[0.59, 0.41])
+    payment_methods = np.random.choice([
+        "Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"
+    ], size=n_rows)
+
+    monthly_charges = np.round(np.random.uniform(18.25, 118.75, size=n_rows), 2)
+    # Ensure some monthly charges > 75
+    monthly_charges[0:15] = 85.50
+
+    total_charges = np.round(monthly_charges * tenures, 2)
+    # Ensure some High Value Customers (TotalCharges > 5000)
+    total_charges[0:10] = 5500.00
+    total_charges[10:15] = 6200.50
+
+    churns = np.random.choice(["Yes", "No"], size=n_rows, p=[0.27, 0.73])
+
+    df = pd.DataFrame({
+        "customerID": customer_ids,
+        "gender": genders,
+        "SeniorCitizen": senior_citizens,
+        "Partner": partners,
+        "Dependents": dependents,
+        "tenure": tenures,
+        "PhoneService": phone_services,
+        "MultipleLines": multiple_lines,
+        "InternetService": internet_services,
+        "OnlineSecurity": online_securities,
+        "OnlineBackup": online_backups,
+        "DeviceProtection": device_protections,
+        "TechSupport": tech_supports,
+        "StreamingTV": streaming_tvs,
+        "StreamingMovies": streaming_movies,
+        "Contract": contracts,
+        "PaperlessBilling": paperless_billings,
+        "PaymentMethod": payment_methods,
+        "MonthlyCharges": monthly_charges,
+        "TotalCharges": total_charges,
+        "Churn": churns
+    })
+
+    df.to_csv(fixture_path, index=False)
+    print(f"Generated telco churn fixture with {len(df)} rows at {fixture_path}")
+
 if __name__ == "__main__":
     generate_sales_fixture()
+    generate_telco_fixture()
