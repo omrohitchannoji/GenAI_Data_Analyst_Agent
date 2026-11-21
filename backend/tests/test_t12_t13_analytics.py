@@ -74,7 +74,22 @@ def test_analytics_and_explainer():
         "execution_events": [],
         "warnings": []
     }
-    narrative_state = narrative_explainer_node(explainer_input)
+    if not os.environ.get("GROQ_API_KEY"):
+        from app.services.providers.base import LLMProvider, ProviderResult
+        from app.agent.state import InsightNarrativeOutput
+        class MockNarrativeProvider(LLMProvider):
+            def generate_structured(self, prompt, schema, system_prompt=None):
+                output = InsightNarrativeOutput(
+                    executive_summary="Engineering has the highest average salary at 120000.0, followed by Sales.",
+                    key_observations=["Engineering average salary is 120000.0", "Mean salary is 68750.0"],
+                    business_implications=["Compensation distribution reflects functional specializations."],
+                    recommended_actions=["Review parity across technical departments."]
+                )
+                return ProviderResult(parsed=output, raw_text="mock", model="mock")
+        provider = MockNarrativeProvider()
+    else:
+        provider = None
+    narrative_state = narrative_explainer_node(explainer_input, provider=provider)
     assert narrative_state["terminal_status"] == TerminalStatus.SUCCESS.value
     assert len(narrative_state["final_response"]) > 0
     print("\nNarrative Explainer Output Preview:")

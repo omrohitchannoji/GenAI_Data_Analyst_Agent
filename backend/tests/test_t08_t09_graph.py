@@ -14,10 +14,13 @@ from app.agent.graph import agent_graph
 from app.agent.state import TerminalStatus
 
 def test_full_agent_graph_scenarios():
+    if not os.environ.get("GROQ_API_KEY"):
+        import pytest
+        pytest.skip("Skipping live graph test: GROQ_API_KEY is not set.")
     db_path = os.path.join(backend_dir, "uploaded_data.db")
     if not os.path.exists(db_path):
-        print(f"Skipping test: DB not found at {db_path}")
-        return
+        import pytest
+        pytest.skip(f"Skipping test: DB not found at {db_path}")
 
     # -------------------------------------------------------------
     # 1. SCENARIO: Valid Aggregation Query -> SUCCESS

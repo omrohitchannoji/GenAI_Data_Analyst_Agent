@@ -48,6 +48,10 @@ def run_sql_query(sql: str):
     Guarantees AST safety, read-only permissions, and 10s deadline.
     """
     try:
+        from app.core.sql_validator import validate_sql_security
+        is_safe, sec_error = validate_sql_security(sql=sql, allowed_tables=["data"])
+        if not is_safe:
+            return f"SQL Error: {sec_error}"
         if not os.path.exists(DB_FILE):
             return "Database not found. Upload a CSV with /upload_csv first."
         res = execute_query_safely(

@@ -18,10 +18,13 @@ from app.agent.graph import (
 from app.agent.state import TerminalStatus
 
 def test_multi_turn_and_session_durability():
+    if not os.environ.get("GROQ_API_KEY"):
+        import pytest
+        pytest.skip("Skipping live session memory test: GROQ_API_KEY is not set.")
     db_path = os.path.join(backend_dir, "uploaded_data.db")
     if not os.path.exists(db_path):
-        print("Skipping test: DB not found.")
-        return
+        import pytest
+        pytest.skip("Skipping test: DB not found.")
 
     # Use a isolated checkpoint database for testing
     temp_cp_db = os.path.join(tempfile.gettempdir(), "test_checkpoints.db")

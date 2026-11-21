@@ -13,6 +13,10 @@ load_dotenv(os.path.join(backend_dir, ".env"))
 from app.main import app
 
 def test_api_query_endpoint():
+    if not os.environ.get("GROQ_API_KEY"):
+        import pytest
+        pytest.skip("Skipping live API test: GROQ_API_KEY is not set.")
+
     client = TestClient(app)
 
     # 1. Test POST /query with valid question

@@ -31,6 +31,10 @@ def test_business_glossary():
 
     # 3. Agent Execution with Approved Business Glossary Definition
     print("\n--- Test 3: Agent using Approved Glossary Term ---")
+    if not os.environ.get("GROQ_API_KEY"):
+        import pytest
+        pytest.skip("Skipping live agent turns in test_business_glossary: GROQ_API_KEY is not set.")
+
     res = run_agent_turn(
         question="Count of High Value Customers",
         dataset_id="default",
