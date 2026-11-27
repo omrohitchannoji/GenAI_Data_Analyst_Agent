@@ -4,6 +4,15 @@ from pydantic import BaseModel
 import pandas as pd
 import sqlite3
 import os, json, time, io, uuid
+from dotenv import load_dotenv
+
+# Load local settings before importing providers, the graph, or other modules
+# that read environment variables during import. Process/container variables
+# take precedence over .env values.
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(os.path.join(BACKEND_DIR, ".env"))
+load_dotenv(os.path.join(BACKEND_DIR, "..", ".env"))
+
 from app.services.llm_agent import generate_llm_explanation
 from app.services.query_engine import run_sql_with_correction, question_to_sql_with_memory
 from app.core.utils import detect_column_types  # keep utils minimal: detect_column_types
@@ -11,7 +20,7 @@ from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
 from app.services.query_executor import execute_query_safely
-from app.core.auth import get_current_principal, create_access_token
+from app.core.auth import get_current_principal, create_access_token, authenticate_credentials
 import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
@@ -39,8 +48,8 @@ class SQLRequest(BaseModel):
     sql: str
 
 class TokenRequest(BaseModel):
-    principal_id: str
-    role: str = "analyst"
+    username: str
+    password: str
 
 def run_sql_query(sql: str):
     """
@@ -84,18 +93,25 @@ def health_check():
     }
 
 @app.post("/auth/token")
+@app.post("/auth/login")
 def issue_token(req: TokenRequest):
     """
-    Issues an HMAC-SHA256 signed JWT bearer token containing the principal_id in 'sub'.
-    Used for authenticated API requests and verified cross-tenant dataset isolation.
+    Issues an HMAC-SHA256 signed JWT bearer token containing verified claims.
+    Derives principal_id and role strictly server-side from validated credentials.
+    Callers cannot self-mint arbitrary identities or roles.
     """
-    if not req.principal_id or not req.principal_id.strip():
-        raise HTTPException(status_code=400, detail="principal_id cannot be empty")
-    token = create_access_token(principal_id=req.principal_id.strip(), role=req.role)
+    if not req.username or not req.username.strip():
+        raise HTTPException(status_code=400, detail="username cannot be empty")
+    if not req.password or not req.password.strip():
+        raise HTTPException(status_code=400, detail="password cannot be empty")
+
+    auth_data = authenticate_credentials(req.username.strip(), req.password.strip())
+    token = create_access_token(principal_id=auth_data["principal_id"], role=auth_data["role"])
     return {
         "access_token": token,
         "token_type": "bearer",
-        "principal_id": req.principal_id.strip(),
+        "principal_id": auth_data["principal_id"],
+        "role": auth_data["role"],
         "expires_in": 86400
     }
 
@@ -185,7 +201,8 @@ def query_agent(request: QueryRequest, raw_req: Request = None):
         metadata={
             "model_calls": res.get("model_calls", 0),
             "retry_count": res.get("retry_count", 0),
-            "events": res.get("execution_events", [])
+            "events": res.get("execution_events", []),
+            "telemetry": res.get("telemetry")
         }
     )
 

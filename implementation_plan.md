@@ -7,7 +7,7 @@ The target architecture uses **LangGraph** to model a single-agent stateful work
 - **LLM Reasoning**: Intent parsing, multi-step planning, SQL query generation, repair strategy, and executive narrative generation.
 - **Deterministic Execution**: AST SQL security parsing via `sqlglot`, SQLite database querying, Pandas quantitative calculations (sums, averages, top/bottom, anomalies, %, variance), and Plotly chart rendering.
 - **Self-Correction & Bounded Repair Loop**: Multi-layered validation with an automated retry loop capped at $\le 3$ retries.
-- **Business Glossary RAG**: Context retrieval using ChromaDB vector store.
+- **Business Glossary Lookup**: Retrieve approved term definitions from the SQLite-backed glossary.
 - **Evaluation Benchmark Suite**: 20-30 end-to-end evaluation queries covering aggregations, filters, time analysis, glossary lookups, and malicious code injection prevention.
 - **Streamlit Status Tracking UI**: Real-time event state visualization (`st.status`).
 
@@ -54,8 +54,8 @@ LLMs are prone to arithmetic halluncinations (e.g., miscalculating standard devi
 - **LLM Responsibility**: Understanding human intent, structuring SQL queries, planning analysis, and translating analytical findings into executive English.
 - **Deterministic Responsibility**: Executing SQL queries, running Pandas computations (accurate math), and rendering charts.
 
-### 6. Business Glossary RAG (ChromaDB)
-Users often use business domain terms like *"Active Customers"* or *"High Value Orders"*. The agent uses ChromaDB vector store to fetch relevant domain definitions (e.g., `"Active Customer" -> status = 'Active' AND last_login_days <= 30`) and feed them as context to the SQL generator.
+### 6. Business Glossary Lookup
+Users may use approved business terms such as *"High Value Customers"*. The planner searches the SQLite-backed glossary and supplies matching definitions to the SQL generator. This is exact/keyword glossary lookup, not vector-search RAG.
 
 ---
 
@@ -88,7 +88,7 @@ Users often use business domain terms like *"Active Customers"* or *"High Value 
 
 #### [NEW] [nodes.py](file:///c:/Users/OM/Desktop/data_analyst_agent/backend/app/agent/nodes.py)
 - `analyzer_planner_node`: Combines intent understanding and multi-step plan generation into one node for lower latency.
-- `sql_generator_node`: Generates SQLite SQL using schema & glossary RAG context.
+- `sql_generator_node`: Generates SQLite SQL using the schema and approved glossary definitions.
 - `validator_node`: Evaluates Layer 1 (execution), Layer 2 (non-empty & data types), and Layer 3 (dimension/filters).
 - `repair_node`: Formulates repair prompt when validation fails and increments `retry_count`.
 - `pandas_insights_node`: Wraps existing `insights_engine.py` functions to compute deterministic summary, percent diffs, top/bottom, anomalies.

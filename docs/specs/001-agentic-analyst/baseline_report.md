@@ -11,8 +11,8 @@ The baseline system was evaluated across 6 representative test scenarios using t
 ### Model Environment:
 - **Provider:** Groq
 - **Active Model:** `openai/gpt-oss-120b` (Note: original hardcoded `llama-3.1-8b-instant` returned HTTP 404 `model_not_found`)
-- **Execution Script:** `specs/001-agentic-analyst/baseline_benchmark.py`
-- **Saved Results:** `specs/001-agentic-analyst/baseline_results.json`
+- **Execution Script:** `docs/specs/001-agentic-analyst/baseline_benchmark.py`
+- **Saved Results:** `docs/specs/001-agentic-analyst/baseline_results.json`
 
 ---
 

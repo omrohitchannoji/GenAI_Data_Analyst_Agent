@@ -3,6 +3,7 @@ import sys
 import pytest
 import sqlite3
 import tempfile
+import json
 
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, backend_dir)
@@ -13,7 +14,10 @@ from app.main import app
 from app.core.auth import (
     create_access_token,
     verify_access_token,
-    get_current_principal
+    get_current_principal,
+    get_auth_secret_key,
+    authenticate_credentials,
+    get_configured_users,
 )
 from app.core.dataset_registry import DatasetRegistry
 from app.agent.state import TerminalStatus
@@ -21,7 +25,12 @@ from app.agent.nodes import validate_scope_node
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    monkeypatch.setenv("AUTH_SECRET_KEY", "test-only-auth-secret-key-for-tests-2026")
+    monkeypatch.setenv("AUTH_USERS_JSON", json.dumps({
+        "analyst_alice": {"password": "alice_test_password", "role": "analyst"},
+        "admin_test": {"password": "admin_test_password", "role": "admin"},
+    }))
     return TestClient(app)
 
 
@@ -49,7 +58,6 @@ def test_tampered_token_rejected():
 
 def test_expired_token_rejected():
     """Verify that an expired token is rejected with 401."""
-    # Create token expired 10 seconds ago
     token = create_access_token(principal_id="user_alice", role="analyst", expires_in_seconds=-10)
     with pytest.raises(HTTPException) as exc_info:
         verify_access_token(token)
@@ -57,25 +65,65 @@ def test_expired_token_rejected():
     assert "expired" in exc_info.value.detail.lower()
 
 
-def test_auth_token_endpoint(client):
-    """Test POST /auth/token issues valid tokens."""
-    resp = client.post("/auth/token", json={"principal_id": "test_engineer", "role": "admin"})
+def test_auth_token_endpoint_success(client):
+    """Test POST /auth/token with valid server-configured credentials."""
+    resp = client.post("/auth/token", json={"username": "analyst_alice", "password": "alice_test_password"})
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert data["principal_id"] == "test_engineer"
+    assert data["principal_id"] == "analyst_alice"
+    assert data["role"] == "analyst"
 
     # Verify that the issued token is cryptographically valid
     claims = verify_access_token(data["access_token"])
-    assert claims["sub"] == "test_engineer"
-    assert claims["role"] == "admin"
+    assert claims["sub"] == "analyst_alice"
+    assert claims["role"] == "analyst"
+
+
+def test_auth_token_endpoint_invalid_credentials(client):
+    """Test POST /auth/token rejects invalid password and unknown users with 401."""
+    # Wrong password
+    resp = client.post("/auth/token", json={"username": "analyst_alice", "password": "wrong_password"})
+    assert resp.status_code == 401
+    assert "Invalid username or password" in resp.json()["detail"]
+
+    # Unknown username
+    resp = client.post("/auth/token", json={"username": "unknown_intruder", "password": "any_password"})
+    assert resp.status_code == 401
+    assert "Invalid username or password" in resp.json()["detail"]
 
 
 def test_auth_token_endpoint_rejects_empty(client):
-    """Test POST /auth/token rejects empty principal_id."""
-    resp = client.post("/auth/token", json={"principal_id": "   "})
+    """Test POST /auth/token rejects empty username or password."""
+    resp = client.post("/auth/token", json={"username": "   ", "password": "foo"})
     assert resp.status_code == 400
+
+    resp = client.post("/auth/token", json={"username": "analyst_alice", "password": "   "})
+    assert resp.status_code == 400
+
+
+def test_fail_closed_without_secret_key(monkeypatch):
+    """Verify that absent AUTH_SECRET_KEY fails closed with HTTP 500 error."""
+    monkeypatch.delenv("AUTH_SECRET_KEY", raising=False)
+    with pytest.raises(HTTPException) as exc_info:
+        get_auth_secret_key()
+    assert exc_info.value.status_code == 500
+    assert "misconfiguration" in exc_info.value.detail.lower()
+
+
+def test_auth_users_configuration_fails_closed(monkeypatch):
+    monkeypatch.delenv("AUTH_USERS_JSON", raising=False)
+    with pytest.raises(HTTPException) as exc_info:
+        get_configured_users()
+    assert exc_info.value.status_code == 503
+
+
+def test_invalid_auth_users_configuration_fails_closed(monkeypatch):
+    monkeypatch.setenv("AUTH_USERS_JSON", "not-json")
+    with pytest.raises(HTTPException) as exc_info:
+        get_configured_users()
+    assert exc_info.value.status_code == 500
 
 
 def test_raw_header_spoofing_prevented(client):

@@ -145,3 +145,5 @@ class AgentState(TypedDict):
     start_time: float
     model_calls: int
     execution_events: List[Dict[str, Any]]
+    node_spans: List[Dict[str, Any]]
+    telemetry: Optional[Dict[str, Any]]

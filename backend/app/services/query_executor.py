@@ -2,6 +2,7 @@ import time
 import sqlite3
 from typing import Dict, Any, Optional, List
 from app.core.sql_validator import validate_sql_security
+from app.core.telemetry import langfuse_observation
 
 DEFAULT_QUERY_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_DISPLAY_ROWS = 1000
@@ -21,12 +22,20 @@ def execute_query_safely(
     3. Query runtime deadline enforcement via SQLite progress handler.
     4. Explicit row cap and truncation detection.
     """
-    # 1. AST Structural & Security Check
-    is_safe, security_error = validate_sql_security(
-        sql=sql,
-        allowed_tables=allowed_tables,
-        allowed_columns=allowed_columns
-    )
+    # Validator and executor are separate child observations under the graph node.
+    validation_started = time.perf_counter()
+    with langfuse_observation("validator") as observation:
+        is_safe, security_error = validate_sql_security(
+            sql=sql,
+            allowed_tables=allowed_tables,
+            allowed_columns=allowed_columns
+        )
+        if observation is not None:
+            try:
+                observation.update(metadata={"status": "accepted" if is_safe else "rejected"})
+            except Exception:
+                pass
+    validation_latency_seconds = time.perf_counter() - validation_started
     if not is_safe:
         return {
             "success": False,
@@ -37,10 +46,42 @@ def execute_query_safely(
             "is_empty": False,
             "is_security_violation": True,
             "latency_seconds": 0.0,
-            "error": security_error
+            "error": security_error,
+            "_telemetry": {"validator_seconds": validation_latency_seconds, "executor_seconds": None}
         }
 
-    # 2. Enforce read-only connection
+    execution_started = time.perf_counter()
+    with langfuse_observation("executor") as observation:
+        result = _execute_validated_query(
+            db_path=db_path,
+            sql=sql,
+            timeout_seconds=timeout_seconds,
+            max_display_rows=max_display_rows,
+        )
+        if observation is not None:
+            try:
+                observation.update(metadata={
+                    "status": "success" if result.get("success") else "error",
+                    "row_count": result.get("row_count", 0),
+                    "latency_ms": round(result.get("latency_seconds", 0.0) * 1000, 2),
+                })
+            except Exception:
+                pass
+        result["_telemetry"] = {
+            "validator_seconds": validation_latency_seconds,
+            "executor_seconds": time.perf_counter() - execution_started,
+        }
+        return result
+
+
+def _execute_validated_query(
+    db_path: str,
+    sql: str,
+    timeout_seconds: float,
+    max_display_rows: int,
+) -> Dict[str, Any]:
+    """Execute already-validated SQL with read-only, timeout, and row-limit controls."""
+    # Enforce read-only connection
     start_time = time.time()
     conn_uri = f"file:{db_path}?mode=ro"
 

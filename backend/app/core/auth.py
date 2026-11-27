@@ -2,25 +2,68 @@ import os
 import time
 import json
 import hmac
-import base64
-import hashlib
+import jwt
 from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException
+from jwt import ExpiredSignatureError, InvalidSignatureError, InvalidTokenError
 
-# Secret key used for cryptographic token signing (configurable via environment)
-AUTH_SECRET_KEY = os.environ.get("AUTH_SECRET_KEY", "agentic-analyst-signed-token-secret-key-2026")
+# ============================================================
+# AUTHENTICATION CONFIGURATION & FAIL-CLOSED ENFORCEMENT
+# ============================================================
 DEFAULT_TOKEN_EXPIRY_SECONDS = 86400  # 24 hours
 
-def _base64url_encode(data: bytes) -> str:
-    """Encodes bytes into URL-safe base64 without padding."""
-    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+def get_configured_users() -> Dict[str, Dict[str, str]]:
+    raw = os.environ.get("AUTH_USERS_JSON")
+    if not raw or not raw.strip():
+        raise HTTPException(status_code=503, detail="Authentication users are not configured on this server.")
+    try:
+        users = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="AUTH_USERS_JSON must contain a valid JSON user map.")
+    if not isinstance(users, dict):
+        raise HTTPException(status_code=500, detail="AUTH_USERS_JSON must contain a JSON object.")
+    for username, user in users.items():
+        if not isinstance(username, str) or not username.strip() or not isinstance(user, dict):
+            raise HTTPException(status_code=500, detail="AUTH_USERS_JSON contains an invalid user entry.")
+        if not isinstance(user.get("password"), str) or not user["password"]:
+            raise HTTPException(status_code=500, detail="Each configured user must have a password.")
+        if user.get("role") not in {"admin", "analyst"}:
+            raise HTTPException(status_code=500, detail="Each configured user must have an allowed role.")
+    return users
 
-def _base64url_decode(data: str) -> bytes:
-    """Decodes URL-safe base64 string with appropriate padding."""
-    padding = 4 - (len(data) % 4)
-    if padding != 4:
-        data += "=" * padding
-    return base64.urlsafe_b64decode(data.encode("utf-8"))
+def get_auth_secret_key() -> str:
+    """
+    Retrieves the cryptographic signing secret from the environment.
+    Strictly FAILS CLOSED if AUTH_SECRET_KEY is absent.
+    Prevents hardcoded fallback secrets from being used in production.
+    """
+    secret = os.environ.get("AUTH_SECRET_KEY")
+    if not secret or not secret.strip():
+        raise HTTPException(
+            status_code=500,
+            detail="Server security misconfiguration: AUTH_SECRET_KEY environment variable is required and cannot be empty."
+        )
+    return secret.strip()
+
+def authenticate_credentials(username: str, password: str) -> Dict[str, str]:
+    """
+    Authenticates user credentials against the server-side directory.
+    Derives principal_id and role strictly on the server; callers cannot mint arbitrary identities.
+    """
+    users = get_configured_users()
+    user_info = users.get(username.strip())
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    expected_password = user_info.get("password", "")
+    # Constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(expected_password.encode("utf-8"), password.strip().encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    return {
+        "principal_id": username.strip(),
+        "role": user_info.get("role", "analyst")
+    }
 
 def create_access_token(
     principal_id: str,
@@ -32,8 +75,7 @@ def create_access_token(
     Creates a signed HMAC-SHA256 bearer token encoding principal_id in 'sub'.
     Returns standard JWT format: base64url(header).base64url(payload).base64url(signature)
     """
-    secret = (secret_key or AUTH_SECRET_KEY).encode("utf-8")
-    header = {"alg": "HS256", "typ": "JWT"}
+    secret = secret_key or get_auth_secret_key()
     now = int(time.time())
     payload = {
         "sub": principal_id,
@@ -42,14 +84,7 @@ def create_access_token(
         "exp": now + expires_in_seconds
     }
 
-    header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
-    payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-    signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
-
-    signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
-    sig_b64 = _base64url_encode(signature)
-
-    return f"{header_b64}.{payload_b64}.{sig_b64}"
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 def verify_access_token(token: str, secret_key: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -57,35 +92,20 @@ def verify_access_token(token: str, secret_key: Optional[str] = None) -> Dict[st
     Returns decoded claims dictionary.
     Raises HTTPException(401) on invalid signature, malformed structure, or expiration.
     """
-    parts = token.strip().split(".")
-    if len(parts) != 3:
-        raise HTTPException(status_code=401, detail="Malformed authentication token.")
-
-    header_b64, payload_b64, sig_b64 = parts
-    secret = (secret_key or AUTH_SECRET_KEY).encode("utf-8")
-    signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
-
-    expected_sig = hmac.new(secret, signing_input, hashlib.sha256).digest()
+    secret = secret_key or get_auth_secret_key()
     try:
-        provided_sig = _base64url_decode(sig_b64)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token encoding.")
-
-    if not hmac.compare_digest(expected_sig, provided_sig):
-        raise HTTPException(status_code=401, detail="Invalid token signature. Authentication failed.")
-
-    try:
-        payload_bytes = _base64url_decode(payload_b64)
-        claims = json.loads(payload_bytes.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token claims payload.")
-
-    exp = claims.get("exp")
-    if exp and time.time() > exp:
+        claims = jwt.decode(
+            token.strip(),
+            secret,
+            algorithms=["HS256"],
+            options={"require": ["sub", "role", "iat", "exp"]},
+        )
+    except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Authentication token has expired.")
-
-    if not claims.get("sub"):
-        raise HTTPException(status_code=401, detail="Token missing subject principal ('sub').")
+    except InvalidSignatureError:
+        raise HTTPException(status_code=401, detail="Invalid token signature. Authentication failed.")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid authentication token.")
 
     return claims
 
@@ -94,11 +114,13 @@ def get_current_principal(request: Optional[Request]) -> str:
     FastAPI identity boundary: derives principal_id strictly from cryptographically
     verified token claims.
     
-    Security Guarantee:
+    Security Guarantees:
     - NEVER trusts unverified client headers like 'x-principal-id'.
     - If an Authorization Bearer token is provided, validates signature & returns claims['sub'].
     - If token is invalid or tampered, raises HTTP 401 Unauthorized.
-    - If no Authorization header is provided, falls back to 'demo_user' for local/public demo mode.
+    - If no Authorization header is provided and ALLOW_DEMO_ANONYMOUS=true, falls back to 'demo_user'
+      which is explicitly documented and bounded as a shared, unisolated demo session.
+    - If ALLOW_DEMO_ANONYMOUS=false, raises HTTP 401 Unauthorized.
     """
     if request is None:
         return "demo_user"
@@ -112,7 +134,7 @@ def get_current_principal(request: Optional[Request]) -> str:
         claims = verify_access_token(token)
         return str(claims["sub"])
 
-    # Fallback to demo_user when no token is supplied (for public Streamlit demo)
+    # Explicit shared public demo mode fallback
     allow_demo = os.environ.get("ALLOW_DEMO_ANONYMOUS", "true").lower() == "true"
     if allow_demo:
         return "demo_user"

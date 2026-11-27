@@ -276,7 +276,7 @@ Adapt to the repository instead of creating duplicate services.
 | Existing insights/chart modules | Reuse deterministic calculations and chart mapping |
 | `backend/tests/` | Unit, integration, access and regression tests |
 | `backend/eval/` | Fixed fixtures, reference answers, runner and reports |
-| `specs/001-agentic-analyst/` | Specification, design, contracts, tasks and evaluation |
+| `docs/specs/001-agentic-analyst/` | Specification, design, contracts, tasks and evaluation |
 | `specs/002-bedrock/` | Optional provider integration and comparison |
 | `docs/` | Architecture, setup, operations and demo guide |
 

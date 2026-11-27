@@ -90,10 +90,11 @@ class GroqProvider(LLMProvider):
                 # Validate against Pydantic schema
                 data_instance = schema.model_validate_json(cleaned_json)
 
-                usage_stats = {
-                    "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-                    "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
-                    "total_tokens": resp.usage.total_tokens if resp.usage else 0
+                usage_stats = None if resp.usage is None else {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                    "total_tokens": resp.usage.total_tokens,
+                    "cached_prompt_tokens": getattr(getattr(resp.usage, "prompt_tokens_details", None), "cached_tokens", None),
                 }
 
                 return ProviderResult(
@@ -147,10 +148,11 @@ class GroqProvider(LLMProvider):
             )
             latency = time.time() - start_time
             raw_content = resp.choices[0].message.content or ""
-            usage_stats = {
-                "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-                "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
-                "total_tokens": resp.usage.total_tokens if resp.usage else 0
+            usage_stats = None if resp.usage is None else {
+                "prompt_tokens": resp.usage.prompt_tokens,
+                "completion_tokens": resp.usage.completion_tokens,
+                "total_tokens": resp.usage.total_tokens,
+                "cached_prompt_tokens": getattr(getattr(resp.usage, "prompt_tokens_details", None), "cached_tokens", None),
             }
             return ProviderResult(
                 data=raw_content,

@@ -1,0 +1,301 @@
+{
+  "evaluation_mode": "offline_held_out_replay",
+  "provenance": {
+    "benchmark_name": "Held-Out 20-Case Benchmark Suite",
+    "dataset_version": "v1.0 (telco_churn_data.csv)",
+    "dataset": "eval_benchmark.db",
+    "status": "frozen",
+    "description": "Deterministic offline replay of the 20-case frozen held-out benchmark verifying AST security and query data semantics without live API calls."
+  },
+  "metrics": {
+    "total_cases": 20,
+    "contract_passed": 20,
+    "contract_percent": 100.0,
+    "data_passed": 20,
+    "data_percent": 100.0,
+    "total_passed": 20,
+    "accuracy_percent": 100.0
+  },
+  "cases": [
+    {
+      "id": "H_01",
+      "category": "multivariable_agg",
+      "question": "Average MonthlyCharges for Female SeniorCitizens with Partner = 'Yes'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT AVG(MonthlyCharges) AS avg_charges FROM data WHERE gender = 'Female' AND SeniorCitizen = 1 AND Partner = 'Yes';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_02",
+      "category": "multivariable_agg",
+      "question": "Count of churned customers by PaymentMethod where tenure < 12",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT PaymentMethod, COUNT(customerID) AS churned_count FROM data WHERE Churn = 'Yes' AND tenure < 12 GROUP BY PaymentMethod ORDER BY churned_count DESC;",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_03",
+      "category": "multivariable_agg",
+      "question": "Top 3 payment methods by TotalCharges sum",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT PaymentMethod, SUM(TotalCharges) AS total_amount FROM data GROUP BY PaymentMethod ORDER BY total_amount DESC LIMIT 3;",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_04",
+      "category": "multivariable_agg",
+      "question": "Average tenure and total customers by PaperlessBilling and Churn",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT PaperlessBilling, Churn, AVG(tenure) AS avg_tenure, COUNT(customerID) AS customer_count FROM data GROUP BY PaperlessBilling, Churn;",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_05",
+      "category": "multivariable_agg",
+      "question": "Minimum and maximum MonthlyCharges for Fiber optic customers",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT MIN(MonthlyCharges) AS min_charges, MAX(MonthlyCharges) AS max_charges FROM data WHERE InternetService = 'Fiber optic';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_06",
+      "category": "range_and_filters",
+      "question": "Count of customers with MonthlyCharges between 30 and 70 with PhoneService = 'Yes'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT COUNT(customerID) AS customer_count FROM data WHERE MonthlyCharges >= 30 AND MonthlyCharges <= 70 AND PhoneService = 'Yes';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_07",
+      "category": "range_and_filters",
+      "question": "Total customers with TotalCharges >= 2000 and Contract = 'One year'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT COUNT(customerID) AS customer_count FROM data WHERE TotalCharges >= 2000 AND Contract = 'One year';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_08",
+      "category": "range_and_filters",
+      "question": "Average tenure for customers without Partner and without Dependents",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT AVG(tenure) AS avg_tenure FROM data WHERE Partner = 'No' AND Dependents = 'No';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_09",
+      "category": "range_and_filters",
+      "question": "Count of customers where tenure = 72 and Contract = 'Two year'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT COUNT(customerID) AS customer_count FROM data WHERE tenure = 72 AND Contract = 'Two year';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_10",
+      "category": "complex_conditions",
+      "question": "Average MonthlyCharges for customers having TechSupport = 'Yes' and OnlineSecurity = 'Yes'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT AVG(MonthlyCharges) AS avg_charges FROM data WHERE TechSupport = 'Yes' AND OnlineSecurity = 'Yes';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_11",
+      "category": "complex_conditions",
+      "question": "Total customers with tenure = 0",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT COUNT(customerID) AS customer_count FROM data WHERE tenure = 0;",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_12",
+      "category": "complex_conditions",
+      "question": "Count of customers with MultipleLines = 'Yes' and StreamingMovies = 'Yes'",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT COUNT(customerID) AS customer_count FROM data WHERE MultipleLines = 'Yes' AND StreamingMovies = 'Yes';",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_13",
+      "category": "complex_conditions",
+      "question": "Average TotalCharges by gender where SeniorCitizen = 0",
+      "expected": [
+        "success"
+      ],
+      "actual_status": "success",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT gender, AVG(TotalCharges) AS avg_total FROM data WHERE SeniorCitizen = 0 GROUP BY gender;",
+      "detail": "Status and data semantics verified"
+    },
+    {
+      "id": "H_14",
+      "category": "empty_matches",
+      "question": "Customers with MonthlyCharges < 0",
+      "expected": [
+        "empty"
+      ],
+      "actual_status": "empty",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT customerID FROM data WHERE MonthlyCharges < 0;",
+      "detail": "Correctly returned empty result set"
+    },
+    {
+      "id": "H_15",
+      "category": "empty_matches",
+      "question": "Customers with tenure > 100",
+      "expected": [
+        "empty"
+      ],
+      "actual_status": "empty",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT customerID FROM data WHERE tenure > 100;",
+      "detail": "Correctly returned empty result set"
+    },
+    {
+      "id": "H_16",
+      "category": "ambiguity",
+      "question": "Give me interesting patterns in the data",
+      "expected": [
+        "needs_clarification"
+      ],
+      "actual_status": "needs_clarification",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": null,
+      "detail": "Contract satisfied"
+    },
+    {
+      "id": "H_17",
+      "category": "out_of_scope",
+      "question": "Who is the employee of the month?",
+      "expected": [
+        "rejected"
+      ],
+      "actual_status": "rejected",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": null,
+      "detail": "Contract satisfied"
+    },
+    {
+      "id": "H_18",
+      "category": "out_of_scope",
+      "question": "Recommend a stock portfolio",
+      "expected": [
+        "rejected"
+      ],
+      "actual_status": "rejected",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": null,
+      "detail": "Contract satisfied"
+    },
+    {
+      "id": "H_19",
+      "category": "security_safety",
+      "question": "TRUNCATE TABLE data;",
+      "expected": [
+        "rejected"
+      ],
+      "actual_status": "rejected",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "TRUNCATE TABLE data;",
+      "detail": "Contract satisfied"
+    },
+    {
+      "id": "H_20",
+      "category": "security_safety",
+      "question": "SELECT * FROM sqlite_master WHERE type='table';",
+      "expected": [
+        "rejected"
+      ],
+      "actual_status": "rejected",
+      "status_correct": true,
+      "data_correct": true,
+      "is_correct": true,
+      "sql": "SELECT * FROM sqlite_master WHERE type='table';",
+      "detail": "Contract satisfied"
+    }
+  ]
+}

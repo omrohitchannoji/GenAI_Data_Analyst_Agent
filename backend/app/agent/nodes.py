@@ -20,12 +20,14 @@ from app.core.schema_inspector import inspect_dataset_schema
 from app.core.dataset_registry import default_registry
 from app.services.insights_engine import summarize_grouped, suggest_chart
 from app.services.glossary import default_glossary
+from app.core.telemetry import append_duration_span, record_node_span
 
 # ============================================================
 # 1. SCOPE VALIDATION NODE
 # ============================================================
 
 def validate_scope_node(state: AgentState) -> Dict[str, Any]:
+    start_t = time.time()
     dataset_id = state.get("dataset_id", "default")
     principal_id = state.get("principal_id", "demo_user")
     events = list(state.get("execution_events", []))
@@ -49,10 +51,12 @@ def validate_scope_node(state: AgentState) -> Dict[str, Any]:
         table_name = "data"
     else:
         events.append({"stage": "scope_validation", "timestamp": time.time(), "status": "unauthorized"})
+        spans = record_node_span(state, "validate_scope", start_t, status="unauthorized", details={"dataset_id": dataset_id})
         return {
             "terminal_status": TerminalStatus.REJECTED.value,
             "error": f"Unauthorized or nonexistent dataset '{dataset_id}'.",
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     try:
@@ -60,16 +64,20 @@ def validate_scope_node(state: AgentState) -> Dict[str, Any]:
         schema["db_path"] = db_path
     except Exception as e:
         events.append({"stage": "scope_validation", "timestamp": time.time(), "status": "schema_error"})
+        spans = record_node_span(state, "validate_scope", start_t, status="error", details={"error": str(e)})
         return {
             "terminal_status": TerminalStatus.FAILED.value,
             "error": f"Failed to inspect dataset schema: {str(e)}",
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     events.append({"stage": "scope_validation", "timestamp": time.time(), "status": "authorized"})
+    spans = record_node_span(state, "validate_scope", start_t, status="completed", details={"dataset_id": dataset_id, "table": table_name})
     return {
         "schema": schema,
-        "execution_events": events
+        "execution_events": events,
+        "node_spans": spans
     }
 
 # ============================================================
@@ -80,6 +88,7 @@ def analyzer_planner_node(state: AgentState, provider: Optional[Any] = None) -> 
     if state.get("terminal_status") in [TerminalStatus.REJECTED.value, TerminalStatus.FAILED.value]:
         return {}
 
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     events.append({"stage": "analyzer_planner", "timestamp": time.time(), "status": "started"})
 
@@ -130,44 +139,54 @@ INSTRUCTIONS:
     try:
         result = provider.generate_structured(IntentPlanOutput, prompt)
         plan: IntentPlanOutput = result.data
+        usage = getattr(result, "usage", None)
+        model = getattr(result, "model", None)
 
         if plan.is_ambiguous:
             events.append({"stage": "analyzer_planner", "timestamp": time.time(), "status": "needs_clarification"})
+            spans = record_node_span(state, "analyzer_planner", start_t, status="needs_clarification", usage=usage, model=model)
             return {
                 "terminal_status": TerminalStatus.NEEDS_CLARIFICATION.value,
                 "clarification_question": plan.clarification_question,
                 "final_response": plan.clarification_question or "Could you clarify your analytical question?",
                 "model_calls": state.get("model_calls", 0) + 1,
-                "execution_events": events
+                "execution_events": events,
+                "node_spans": spans
             }
 
         if plan.intent_type == "unsupported":
             events.append({"stage": "analyzer_planner", "timestamp": time.time(), "status": "unsupported"})
+            spans = record_node_span(state, "analyzer_planner", start_t, status="unsupported", usage=usage, model=model)
             return {
                 "terminal_status": TerminalStatus.REJECTED.value,
                 "error": "The requested question is not a supported analytical operation.",
                 "final_response": "The requested question is not a supported analytical operation.",
                 "model_calls": state.get("model_calls", 0) + 1,
-                "execution_events": events
+                "execution_events": events,
+                "node_spans": spans
             }
 
         events.append({"stage": "analyzer_planner", "timestamp": time.time(), "status": "planned"})
+        spans = record_node_span(state, "analyzer_planner", start_t, status="completed", usage=usage, model=model, details={"intent_type": plan.intent_type})
         return {
             "resolved_question": plan.resolved_question,
             "intent": {"intent_type": plan.intent_type},
             "plan": plan.model_dump(),
             "glossary_context": glossary_matches,
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     except Exception as e:
         events.append({"stage": "analyzer_planner", "timestamp": time.time(), "status": "error", "error": str(e)})
+        spans = record_node_span(state, "analyzer_planner", start_t, status="error", model=getattr(provider, "model", None), details={"error": str(e)})
         return {
             "terminal_status": TerminalStatus.FAILED.value,
             "error": f"Failed during intent analysis: {str(e)}",
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
 # ============================================================
@@ -178,6 +197,7 @@ def sql_generator_node(state: AgentState, provider: Optional[Any] = None) -> Dic
     if state.get("terminal_status") is not None:
         return {}
 
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     events.append({"stage": "sql_generator", "timestamp": time.time(), "status": "started"})
 
@@ -214,20 +234,26 @@ CRITICAL RULES:
     try:
         result = provider.generate_structured(SQLGenerationOutput, prompt)
         sql_out: SQLGenerationOutput = result.data
+        usage = getattr(result, "usage", None)
+        model = getattr(result, "model", None)
 
         events.append({"stage": "sql_generator", "timestamp": time.time(), "status": "sql_generated", "sql": sql_out.sql})
+        spans = record_node_span(state, "sql_generator", start_t, status="completed", usage=usage, model=model, details={"sql": sql_out.sql})
         return {
             "generated_sql": sql_out.sql.strip(),
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
     except Exception as e:
         events.append({"stage": "sql_generator", "timestamp": time.time(), "status": "error", "error": str(e)})
+        spans = record_node_span(state, "sql_generator", start_t, status="error", model=getattr(provider, "model", None), details={"error": str(e)})
         return {
             "terminal_status": TerminalStatus.FAILED.value,
             "error": f"SQL generation failed: {str(e)}",
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
 # ============================================================
@@ -238,6 +264,7 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
     if state.get("terminal_status") is not None:
         return {}
 
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "started"})
 
@@ -246,7 +273,10 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
     sql = state.get("generated_sql", "")
 
     # Locate database path
-    db_path = schema.get("db_path") or (ds_meta["db_path"] if ds_meta else default_db)
+    db_path = schema.get("db_path")
+    if not db_path:
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        db_path = os.path.join(backend_dir, "uploaded_data.db")
 
     # Execute with safety checks
     exec_res = execute_query_safely(
@@ -254,34 +284,48 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
         sql=sql,
         allowed_tables=[table_name]
     )
+    child_timing = exec_res.get("_telemetry", {})
+
+    def with_sql_child_spans(parent_spans):
+        append_duration_span(parent_spans, "validator", child_timing.get("validator_seconds"),
+                             status="accepted" if not exec_res.get("is_security_violation") else "rejected")
+        append_duration_span(parent_spans, "executor", child_timing.get("executor_seconds"),
+                             status="success" if exec_res.get("success") else "error")
+        return parent_spans
 
     if exec_res.get("is_security_violation"):
         events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "rejected", "reason": exec_res["error"]})
+        spans = with_sql_child_spans(record_node_span(state, "sql_validator_executor", start_t, status="rejected", details={"error": exec_res["error"]}))
         return {
             "terminal_status": TerminalStatus.REJECTED.value,
             "validation_status": "rejected",
             "error": exec_res["error"],
             "final_response": f"Query Rejected: {exec_res['error']}",
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     if not exec_res["success"]:
         events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "error", "error": exec_res["error"]})
+        spans = with_sql_child_spans(record_node_span(state, "sql_validator_executor", start_t, status="recoverable_error", details={"error": exec_res["error"]}))
         return {
             "validation_status": "recoverable_error",
             "validation_error": exec_res["error"],
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     if exec_res["is_empty"]:
         events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "empty"})
+        spans = with_sql_child_spans(record_node_span(state, "sql_validator_executor", start_t, status="empty"))
         return {
             "terminal_status": TerminalStatus.EMPTY.value,
             "validation_status": "empty",
             "sql_result": [],
             "sql_columns": exec_res["columns"],
             "final_response": "The query executed successfully, but no records matched the criteria. (Filters were not relaxed).",
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     warnings = list(state.get("warnings", []))
@@ -290,13 +334,15 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
         warnings.append(f"Result set truncated to {exec_res.get('row_count')} rows (display limit exceeded).")
 
     events.append({"stage": "sql_execution", "timestamp": time.time(), "status": "success", "rows": exec_res["row_count"]})
+    spans = with_sql_child_spans(record_node_span(state, "sql_validator_executor", start_t, status="valid", details={"row_count": exec_res["row_count"]}))
     return {
         "validation_status": "valid",
         "sql_result": exec_res["rows"],
         "sql_columns": exec_res["columns"],
         "is_truncated": is_truncated,
         "warnings": warnings,
-        "execution_events": events
+        "execution_events": events,
+        "node_spans": spans
     }
 
 # ============================================================
@@ -304,6 +350,7 @@ def sql_validator_executor_node(state: AgentState) -> Dict[str, Any]:
 # ============================================================
 
 def repair_node(state: AgentState, provider: Optional[Any] = None) -> Dict[str, Any]:
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     retry_count = state.get("retry_count", 0) + 1
     events.append({"stage": "repair", "timestamp": time.time(), "attempt": retry_count, "status": "started"})
@@ -334,23 +381,29 @@ CRITICAL RULES:
     try:
         result = provider.generate_structured(RepairPlanOutput, prompt)
         repair_out: RepairPlanOutput = result.data
+        usage = getattr(result, "usage", None)
+        model = getattr(result, "model", None)
 
         events.append({"stage": "repair", "timestamp": time.time(), "attempt": retry_count, "status": "repaired", "sql": repair_out.repaired_sql})
+        spans = record_node_span(state, "repair", start_t, status="repaired", usage=usage, model=model, details={"attempt": retry_count, "sql": repair_out.repaired_sql})
         return {
             "generated_sql": repair_out.repaired_sql.strip(),
             "retry_count": retry_count,
             "validation_status": "repaired",
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
     except Exception as e:
         events.append({"stage": "repair", "timestamp": time.time(), "attempt": retry_count, "status": "error", "error": str(e)})
+        spans = record_node_span(state, "repair", start_t, status="error", model=getattr(provider, "model", None), details={"attempt": retry_count, "error": str(e)})
         return {
             "terminal_status": TerminalStatus.FAILED.value,
             "error": f"Repair formulation failed: {str(e)}",
             "retry_count": retry_count,
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
 # ============================================================
@@ -358,12 +411,14 @@ CRITICAL RULES:
 # ============================================================
 
 def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     events.append({"stage": "analytics_insights", "timestamp": time.time(), "status": "started"})
 
     rows = state.get("sql_result", [])
     if not rows:
-        return {"terminal_status": TerminalStatus.EMPTY.value}
+        spans = record_node_span(state, "analytics_insights", start_t, status="empty")
+        return {"terminal_status": TerminalStatus.EMPTY.value, "node_spans": spans}
 
     df = pd.DataFrame(rows)
     metrics: List[Dict[str, Any]] = []
@@ -485,21 +540,25 @@ def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
             }
 
         events.append({"stage": "analytics_insights", "timestamp": time.time(), "status": "completed"})
+        spans = record_node_span(state, "analytics_insights", start_t, status="completed", details={"metric_count": len(metrics)})
         return {
             "analysis_result": analysis_result,
             "metrics": metrics,
             "chart_config": chart_config,
             "warnings": warnings,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
     except Exception as e:
         events.append({"stage": "analytics_insights", "timestamp": time.time(), "status": "error", "error": str(e)})
+        spans = record_node_span(state, "analytics_insights", start_t, status="error", details={"error": str(e)})
         return {
             "analysis_result": {"error": str(e)},
             "metrics": [],
             "chart_config": {"chart_type": "table"},
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
 # ============================================================
@@ -507,6 +566,7 @@ def analytics_insights_node(state: AgentState) -> Dict[str, Any]:
 # ============================================================
 
 def narrative_explainer_node(state: AgentState, provider: Optional[Any] = None) -> Dict[str, Any]:
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     events.append({"stage": "narrative_explainer", "timestamp": time.time(), "status": "started"})
 
@@ -534,6 +594,8 @@ RULES:
     try:
         result = provider.generate_structured(InsightNarrativeOutput, prompt)
         narrative: InsightNarrativeOutput = result.data
+        usage = getattr(result, "usage", None)
+        model = getattr(result, "model", None)
 
         # R11 Fact Grounding Check: Validate fact IDs & numerical claims (Issue 2 fix)
         valid_fact_ids = {m["fact_id"] for m in metrics}
@@ -590,12 +652,14 @@ RULES:
             )
 
         events.append({"stage": "narrative_explainer", "timestamp": time.time(), "status": "completed"})
+        spans = record_node_span(state, "narrative_explainer", start_t, status="completed", usage=usage, model=model)
         return {
             "terminal_status": TerminalStatus.SUCCESS.value,
             "final_response": final_text,
             "warnings": warnings,
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
     except Exception as e:
         # Fallback to deterministic summary if LLM narrative fails
@@ -605,12 +669,14 @@ RULES:
             f"(Generated via deterministic fallback due to narrative parsing limit)."
         )
         events.append({"stage": "narrative_explainer", "timestamp": time.time(), "status": "fallback", "error": str(e)})
+        spans = record_node_span(state, "narrative_explainer", start_t, status="fallback", model=getattr(provider, "model", None), details={"error": str(e)})
         return {
             "terminal_status": TerminalStatus.SUCCESS.value,
             "final_response": fallback_text,
             "warnings": state.get("warnings", []) + [f"Narrative generation fallback used: {str(e)}"],
             "model_calls": state.get("model_calls", 0) + 1,
-            "execution_events": events
+            "execution_events": events,
+            "node_spans": spans
         }
 
 # ============================================================
@@ -618,13 +684,16 @@ RULES:
 # ============================================================
 
 def fail_node(state: AgentState) -> Dict[str, Any]:
+    start_t = time.time()
     events = list(state.get("execution_events", []))
     err = state.get("validation_error") or state.get("error") or "Analysis failed after exceeding repair attempt budget."
     events.append({"stage": "failure", "timestamp": time.time(), "status": "failed", "error": err})
+    spans = record_node_span(state, "fail", start_t, status="failed", details={"error": err})
 
     return {
         "terminal_status": TerminalStatus.FAILED.value,
         "error": err,
         "final_response": f"Analysis Failed: {err}",
-        "execution_events": events
+        "execution_events": events,
+        "node_spans": spans
     }

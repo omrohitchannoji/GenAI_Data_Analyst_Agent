@@ -1,55 +1,59 @@
-# Evaluation Benchmark Report (40-Question Suite)
-**Provenance:** Recorded 29 September 2026 using `openai/gpt-oss-120b` via Groq Cloud  
-**Scorecard:** 38 / 40 Passed (**95.0%**)  
-**Offline Replay Status:** 38 / 40 Passed (**95.0%**) via `backend/eval/eval_suite.py --replay`
+# Evaluation Report
 
----
+## 40-case development benchmark
 
-## 1. Scorecard Summary
+- **Recorded live benchmark (original expectations):** 38/40 (95%). This historical run is not a new live-model result.
+- **Corrected deterministic offline replay:** 40/40. It replays recorded model SQL against local SQLite fixtures and checks corrected expectations. It makes no model API calls and does not measure current live model quality or latency.
+- **Expectation corrections:** C4_04 now checks for a successful scalar count of zero; C6_01 now expects clarification because the request omits an aggregation. See [`../../specs/failure_analysis.md`](../../specs/failure_analysis.md) for the evidence and rationale.
 
-| Category | Cases | Passed | Accuracy (%) | Key Finding |
-|---|---:|---:|---:|---|
-| **1. Aggregations, Grouping & Ranking** | 12 | 12 | **100%** | Valid SQL generation without `SELECT *`. Groupings and aggregations matched schema. |
-| **2. Dates & Comparison Arithmetic** | 6 | 6 | **100%** | Numerical comparison boundaries (`between`, `>=`, `<=`) correctly parsed. |
-| **3. Glossary RAG & Multi-Turn Follow-Ups** | 6 | 6 | **100%** | Follow-up context (`prior_context`) preserved across turns. Approved glossary definitions applied accurately. |
-| **4. Ambiguity, Empty Results & Rejections** | 6 | 5 | **83.3%** | Ambiguous questions triggered `needs_clarification`. Non-analytical questions rejected. |
-| **5. SQL Safety & Access Isolation** | 6 | 6 | **100%** | `DROP TABLE`, stacked statements, `DELETE`, `UPDATE`, wildcards, and unauthorized tables blocked by AST. |
-| **6. Repair Recovery & Edge Cases** | 4 | 3 | **75.0%** | Successfully recovered from schema column misalignments; bounded to 2 retries. |
-| **TOTAL** | **40** | **38** | **95.0%** | Verified against two-tier contract compliance and semantic data bounds. |
+## Separate 20-case held-out fixture
 
----
+- **Deterministic replay:** 20/20 (100%) on the local rule/SQL fixtures.
+- The replay does not call the generator. The repository cannot independently establish that the questions remained hidden during all development, so this is not evidence of a blind or representative live-model test. Do not compare it directly with the 40-case live score.
 
-## 2. Detailed Root-Cause Analysis of the 2 Failures
+## Live tracing and reporting
 
-1. **Case `C4_04` (Category: Ambiguity, Empty Results & Rejections):**
-   - **Question:** *"Total customers with tenure > 500"*
-   - **Expected Status:** `empty` (0 rows expected since max tenure in data is 72).
-   - **Actual Result:** Model generated `SELECT COUNT(customerID) AS total_customers FROM data WHERE tenure > 500;`. In SQLite, `COUNT(*)` returns exactly 1 row containing `{"total_customers": 0}`. The system marked the query as `success` with 1 row returned instead of `empty`.
-   - **Remediation Recommendation:** Introduce a post-execution normalization rule: if an analytical query returns a single scalar row where all aggregated count columns equal `0`, evaluate whether the semantic contract required `empty`.
+`latency_report.py` runs model requests only when `--live` is explicitly supplied. Live runs register and query only the synthetic Telco fixture, never the default uploaded-data database. It reports per-stage p50/p95 latency, repair-loop frequency, and tokens/query when all relevant provider calls returned usage data. It also reports cost only when the model has an explicit price in `MODEL_PRICING_TABLE` and token usage is complete. Unknown prices and missing token counts remain unavailable rather than being estimated.
 
-2. **Case `C6_01` (Category: Repair Recovery & Edge Cases):**
-   - **Question:** *"Show MonthlyCharge by Contract"*
-   - **Expected Status:** `success` (SQL generation with grouping).
-   - **Actual Result:** The intent planner classified the request as ambiguous because no aggregation function (`AVG`, `SUM`, `MIN`, `MAX`) was specified for `MonthlyCharge` across the `Contract` categorical dimension. It transitioned to `needs_clarification`.
-   - **Remediation Recommendation:** Provide a default grouping behavior (e.g., default to `AVG` when a numeric metric is grouped by a categorical attribute) if clarification is not desired.
+Langfuse tracing is optional and disabled by default. It records stage status, latency, model, and available token usage; query text, generated SQL, and database rows are not attached to Langfuse observations.
 
----
+The explicit cost table in `backend/app/core/telemetry.py` uses Groq's published per-million-token rates for GPT-OSS 120B and 20B, including the documented cached-input rate. Cost remains unavailable when cached-token counts or token usage are missing. [Groq model rates](https://console.groq.com/docs/models) · [Prompt-cache usage fields](https://console.groq.com/docs/prompt-caching).
 
-## 3. Evaluation Modes & Reproduction Commands
+### Live development telemetry run — 2026-11-27
 
-### Offline Deterministic Replay (Zero API Keys Required)
-Exercises the full AST security validation, SQLite query execution against `fixtures/eval_benchmark.db`, and two-tier assertion verification without model calls:
+The full 40-question development run completed against the synthetic Telco fixture with no run errors. Model: `openai/gpt-oss-120b` (Groq). These are observed stage timings from this run, not a latency guarantee; stage counts are lower where a case did not reach that node.
+
+| Stage | Calls | p50 (ms) | p95 (ms) |
+|---|---:|---:|---:|
+| Planner | 40 | 12,319.25 | 15,510.38 |
+| SQL generator | 24 | 6,603.70 | 10,075.35 |
+| Validator | 24 | 1.85 | 6.21 |
+| Executor | 24 | 1.60 | 4.74 |
+| Repair | 0 | unavailable | unavailable |
+| Insights | 23 | 2.90 | 17.27 |
+| Narrative | 23 | 4,337.80 | 8,317.34 |
+
+- Repair-loop frequency: **0/40 (0%)**.
+- Mean provider-reported usage: **3,065.15 tokens/query**, with complete token usage for **40/40** cases.
+- Mean estimated cost: **$0.00053605/query** using the configured model pricing table. Treat this as an estimate based on provider usage fields and configured rates.
+- All 40 runs completed successfully. This telemetry run does not replace the separate answer-quality evaluation.
+
+Example low-volume live run (uses provider quota):
+
+```bash
+python backend/eval/latency_report.py --split development --limit 1 --live
+```
+
+Full development and held-out runs:
+
+```bash
+python backend/eval/latency_report.py --split development --live
+python backend/eval/latency_report.py --split held_out --live
+```
+
+## No-call replays
+
 ```bash
 python backend/eval/eval_suite.py --replay
+python backend/eval/eval_suite.py --held-out-replay
 ```
-Or via pytest:
-```bash
-pytest backend/tests/test_offline_eval_replay.py -v
-```
-
-### Live Model Benchmark (Requires Groq API Key)
-Executes end-to-end turns against the live Groq LLM API (`openai/gpt-oss-120b`):
-```bash
-python backend/eval/eval_suite.py --live
-```
-*Note: Measured latency during the live benchmark (average 19.69s, p50 22.02s, p95 30.21s) reflects network roundtrips to Groq Cloud across multi-node LangGraph execution.*

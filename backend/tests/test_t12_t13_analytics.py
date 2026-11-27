@@ -78,14 +78,16 @@ def test_analytics_and_explainer():
         from app.services.providers.base import LLMProvider, ProviderResult
         from app.agent.state import InsightNarrativeOutput
         class MockNarrativeProvider(LLMProvider):
-            def generate_structured(self, prompt, schema, system_prompt=None):
+            def generate_structured(self, schema, prompt, system_prompt=None):
                 output = InsightNarrativeOutput(
                     executive_summary="Engineering has the highest average salary at 120000.0, followed by Sales.",
                     key_observations=["Engineering average salary is 120000.0", "Mean salary is 68750.0"],
                     business_implications=["Compensation distribution reflects functional specializations."],
                     recommended_actions=["Review parity across technical departments."]
                 )
-                return ProviderResult(parsed=output, raw_text="mock", model="mock")
+                return ProviderResult(data=output, raw_text="mock", provider="mock", model="mock", latency_seconds=0.0)
+            def generate_text(self, prompt, system_prompt=None):
+                return ProviderResult(data="mock", raw_text="mock", provider="mock", model="mock", latency_seconds=0.0)
         provider = MockNarrativeProvider()
     else:
         provider = None

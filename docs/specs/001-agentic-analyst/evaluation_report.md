@@ -1,4 +1,6 @@
 # Evaluation Benchmark Report (40-Question Suite)
+
+> Historical benchmark artifact. The recorded 38/40 live run and latency figures below are from 29 September 2026. Current reproducible status and the limits of offline replays are in [`backend/eval/eval_report.md`](../../../backend/eval/eval_report.md); failure analysis is in [`specs/failure_analysis.md`](../../../specs/failure_analysis.md). The offline replay is not a fresh model evaluation.
 **Task Reference:** T16 (Requirements R01–R14)  
 **Date:** 29 September 2026  
 **Auditor:** AI Assistant & Omrohit Channoji  
@@ -26,7 +28,7 @@ A comprehensive 40-question benchmark evaluation was executed against the upgrad
 |---|---:|---:|---:|---|
 | **1. Aggregations, Grouping & Ranking** | 12 | 12 | **100%** | Perfect SQL generation without `SELECT *`. Groupings and aggregations matched schema. |
 | **2. Dates & Comparison Arithmetic** | 6 | 6 | **100%** | Numerical comparison boundaries (`between`, `>=`, `<=`) correctly parsed. |
-| **3. Glossary RAG & Multi-Turn Follow-Ups** | 6 | 6 | **100%** | Follow-up context (`prior_context`) preserved across turns. Approved glossary definition (`TotalCharges > 5000`) applied accurately. |
+| **3. Glossary Lookup & Multi-Turn Follow-Ups** | 6 | 6 | **100%** | Follow-up context (`prior_context`) preserved across turns. Approved glossary definition (`TotalCharges > 5000`) applied accurately. |
 | **4. Ambiguity, Empty Results & Rejections** | 6 | 5 | **83.3%** | Ambiguous questions triggered `needs_clarification`. Non-analytical questions rejected. C4_04 returned scalar count 0 as `success` (1 row). |
 | **5. SQL Safety & Access Isolation** | 6 | 6 | **100%** | `DROP TABLE`, stacked statements (`SELECT 1; DROP...`), `DELETE`, `UPDATE`, wildcards (`SELECT *`), and unauthorized tables all blocked structurally by `sqlglot`. |
 | **6. Repair Recovery & Edge Cases** | 4 | 3 | **75.0%** | Successfully recovered from column typos (`Tenures` -> `tenure`). Unknown glossary term triggered clarification. |
@@ -40,7 +42,7 @@ A comprehensive 40-question benchmark evaluation was executed against the upgrad
    - **Question:** *"Total customers with tenure > 500"*
    - **Expected Status:** `empty` (no customers meet this criterion; `tenure` max is 72).
    - **Actual Result:** The model generated `SELECT COUNT(customerID) AS total_customers FROM data WHERE tenure > 500;`. In SQLite, `COUNT(*)` returns exactly 1 row containing `{"total_customers": 0}` rather than 0 rows. The pipeline marked the query status as `success` with 1 returned row.
-   - **Root Cause & Fix Recommendation:** Strict semantic expectation conflict between aggregate counting (which returns a single 0-value row) vs filter queries that return 0 rows. To address, add a prompt instruction or post-processing heuristic that maps `COUNT == 0` on filtered scans to the `empty` contract status if zero matches are expected.
+   - **Root Cause & Fix Recommendation:** The benchmark expected zero result rows, but an ungrouped SQL `COUNT` returns one scalar row with value 0. Preserve valid SQL behavior; either expect a successful count of zero or rewrite the test to request matching records and expect an empty result.
 
 2. **Case `C6_01` (Category: Repair Recovery & Edge Cases):**
    - **Question:** *"Show MonthlyCharge by Contract"*
@@ -65,6 +67,12 @@ The evaluation suite (`backend/eval/eval_suite.py`) supports two distinct operat
    - **Requirements:** None (no external API keys or network calls required; uses local SQLite fixtures in `backend/eval/fixtures/`).
    - **Execution:** Replays recorded model responses through real `sqlglot` AST security validation, executes generated SQL queries against the local benchmark database (`eval_benchmark.db`), and evaluates the two-tier contract compliance and semantic data bounds.
    - **Purpose:** Enables CI/CD pipelines and external reviewers to verify system contracts, AST security, and database execution deterministically without API costs or key dependencies. Result: **38/40 (95.0%)**.
+
+3. **Held-Out Frozen 20-Case Benchmark Suite:**
+   - **Command:** `python backend/eval/eval_suite.py --held-out-replay`
+   - **Requirements:** None for deterministic replay; validates AST query security and tabular execution against fixtures.
+   - **Result:** **20/20 (100.0%)** contract and semantic bounds compliance.
+   - **Scope:** 20 novel, unseen questions frozen before evaluation testing multivariable aggregation, boundary arithmetic, zero matches, ambiguous requests, and injection safety without prior exposure to prompts or rules.
 
 ---
 

@@ -20,7 +20,8 @@ class ProviderResult:
         self.provider = provider
         self.model = model
         self.latency_seconds = latency_seconds
-        self.usage = usage or {}
+        # None means the provider did not report usage; do not turn it into zero tokens.
+        self.usage = usage
 
 class LLMProvider(ABC):
     """Abstract provider adapter ensuring model interchangeability."""

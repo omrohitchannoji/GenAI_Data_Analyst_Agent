@@ -13,6 +13,16 @@ except Exception:
     BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 BACKEND_URL = str(BACKEND_URL).rstrip("/")
 
+
+def format_optional_metric(value, spec: str, prefix: str = "", suffix: str = "") -> str:
+    """Format available numeric telemetry without treating None as zero."""
+    if value is None:
+        return "Unavailable"
+    try:
+        return f"{prefix}{format(value, spec)}{suffix}"
+    except (TypeError, ValueError):
+        return "Unavailable"
+
 st.set_page_config(
     page_title="Agentic AI Data Analyst",
     page_icon="📊",
@@ -57,11 +67,57 @@ if "session_id" not in st.session_state:
 if "dataset_id" not in st.session_state:
     st.session_state["dataset_id"] = "default"
 
+def get_auth_headers():
+    if "bearer_token" in st.session_state:
+        return {"Authorization": f"Bearer {st.session_state['bearer_token']}"}
+    return {}
+
+# ============================================================
+# SIDEBAR — IDENTITY & DEMO/AUTH TOGGLE
+# ============================================================
+with st.sidebar:
+    st.header("🔐 Identity & Mode")
+    auth_mode = st.radio(
+        "Operating Mode",
+        ["Shared Demo Mode", "Authenticated Mode"],
+        help="Shared Demo Mode runs unauthenticated as demo_user without multi-user isolation. Authenticated Mode derives verified tokens server-side."
+    )
+
+    if auth_mode == "Authenticated Mode":
+        st.markdown("#### Login (Server-Verified)")
+        uname = st.text_input("Username", value=st.session_state.get("username", ""))
+        pwd = st.text_input("Password", type="password", value=st.session_state.get("password", ""))
+        if st.button("🔑 Authenticate"):
+            try:
+                auth_resp = requests.post(f"{BACKEND_URL}/auth/token", json={"username": uname, "password": pwd}, timeout=10)
+                if auth_resp.status_code == 200:
+                    token_data = auth_resp.json()
+                    st.session_state["bearer_token"] = token_data["access_token"]
+                    st.session_state["principal_id"] = token_data["principal_id"]
+                    st.session_state["role"] = token_data["role"]
+                    st.success(f"Authenticated as {token_data['principal_id']} ({token_data['role']})")
+                else:
+                    st.error(f"Authentication failed: {auth_resp.text}")
+                    st.session_state.pop("bearer_token", None)
+            except Exception as e:
+                st.error(f"Cannot connect to auth service: {str(e)}")
+
+        if "bearer_token" in st.session_state:
+            st.success(f"Verified Principal: **{st.session_state.get('principal_id')}** [{st.session_state.get('role')}]")
+            if st.button("Log Out"):
+                st.session_state.pop("bearer_token", None)
+                st.session_state.pop("principal_id", None)
+                st.session_state.pop("role", None)
+                st.rerun()
+    else:
+        st.info("ℹ️ Shared Demo Mode: Sessions share unisolated demo namespace. Multi-tenant guarantees do not apply.")
+        st.session_state.pop("bearer_token", None)
+
 # ============================================================
 # HEADER
 # ============================================================
 st.title("📊 Agentic AI Data Analyst")
-st.caption("Stateful LangGraph Agent · AST SQL Safety · Deterministic Analytics · Business Glossary RAG")
+st.caption("Stateful LangGraph Agent · AST SQL Safety · Deterministic Analytics · Business Glossary Lookup")
 
 # ============================================================
 # TABS
@@ -86,6 +142,7 @@ with tab1:
                 resp = requests.post(
                     f"{BACKEND_URL}/upload_csv",
                     files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")},
+                    headers=get_auth_headers(),
                     timeout=120
                 )
             except Exception as e:
@@ -149,7 +206,7 @@ with tab2:
             st.write("🔍 Inspecting dataset scope & schema...")
 
             try:
-                resp = requests.post(f"{BACKEND_URL}/query", json=payload, timeout=60)
+                resp = requests.post(f"{BACKEND_URL}/query", json=payload, headers=get_auth_headers(), timeout=60)
             except Exception as e:
                 status_box.update(label="Connection Failed", state="error")
                 st.error(f"Backend error: {str(e)}")
@@ -225,6 +282,35 @@ with tab2:
 
             st.markdown("### 🤖 Executive Narrative")
             st.markdown(res_data.get("answer", ""))
+
+            # Per-Node Tracing, Latency & Pricing Table Cost Breakdown
+            telemetry = res_data.get("metadata", {}).get("telemetry")
+            if telemetry:
+                with st.expander("⏱️ Per-Node Tracing, Latency & Cost Breakdown", expanded=False):
+                    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                    with m_col1:
+                        st.metric("Total Latency", format_optional_metric(telemetry.get("total_latency_seconds"), ".2f", suffix="s"))
+                    with m_col2:
+                        st.metric("Total Tokens", format_optional_metric(telemetry.get("total_tokens"), ",.0f"))
+                    with m_col3:
+                        st.metric("Inference Cost", format_optional_metric(telemetry.get("total_cost_usd"), ".6f", prefix="$"))
+                    with m_col4:
+                        st.metric("Repair Retries", telemetry.get("repair_count", 0))
+
+                    spans = telemetry.get("spans", [])
+                    if spans:
+                        span_rows = []
+                        for s in spans:
+                            span_rows.append({
+                                "Node": s.get("node_name"),
+                                "Status": s.get("status"),
+                                "Latency (ms)": round(s["latency_seconds"] * 1000, 1) if s.get("latency_seconds") is not None else "Unavailable",
+                                "Prompt Tok": s.get("prompt_tokens") if s.get("prompt_tokens") is not None else "Unavailable",
+                                "Comp Tok": s.get("completion_tokens") if s.get("completion_tokens") is not None else "Unavailable",
+                                "Cost (USD)": format_optional_metric(s.get("cost_usd"), ".6f", prefix="$"),
+                            })
+                        st.dataframe(pd.DataFrame(span_rows), use_container_width=True)
+                        st.caption(f"Model: {telemetry.get('model_name')}. Cost is shown only when usage and cached-token data are available; query text and database rows are not sent in telemetry.")
 
             st.info("👉 Check the **Analysis Dashboard** tab for charts and metric summaries!")
 

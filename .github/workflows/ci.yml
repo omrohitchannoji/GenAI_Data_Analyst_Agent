@@ -2,9 +2,9 @@ name: CI Offline Test Suite & Eval Replay
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "portfolio-upgrade" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "portfolio-upgrade" ]
 
 jobs:
   offline-tests:
@@ -32,9 +32,18 @@ jobs:
           pytest backend/tests/ -v -rs
         env:
           PYTHONPATH: backend
+          AUTH_SECRET_KEY: test_only_ci_secret_key_for_hs256_2026
 
       - name: Run 40-Case Evaluation Offline Replay
         run: |
           python backend/eval/eval_suite.py --replay
         env:
           PYTHONPATH: backend
+          AUTH_SECRET_KEY: test_only_ci_secret_key_for_hs256_2026
+
+      - name: Run 20-Case Held-Out Evaluation Offline Replay
+        run: |
+          python backend/eval/eval_suite.py --held-out-replay
+        env:
+          PYTHONPATH: backend
+          AUTH_SECRET_KEY: test_only_ci_secret_key_for_hs256_2026

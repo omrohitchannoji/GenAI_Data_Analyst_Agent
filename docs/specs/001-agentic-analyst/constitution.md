@@ -1,7 +1,7 @@
 # System Constitution & Core Invariants
 **Project:** Agentic AI Data Analyst  
 **Version:** 1.0  
-**Specification:** specs/001-agentic-analyst/  
+**Specification:** docs/specs/001-agentic-analyst/
 
 ---
 

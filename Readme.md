@@ -1,334 +1,63 @@
-# 🤖 Agentic AI Data Analyst
+# Agentic AI Data Analyst
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-orange.svg)](https://langchain-ai.github.io/langgraph/)
-[![sqlglot](https://img.shields.io/badge/sqlglot-AST_Security-purple.svg)](https://github.com/tobymao/sqlglot)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B.svg)](https://streamlit.io)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+A conversational text-to-SQL assistant that turns business questions into read-only SQLite queries, checks them before execution, computes deterministic summaries, and explains the results with grounded facts. The workflow uses LangGraph and a Groq-hosted language model.
 
-An evidence-based, stateful **Agentic AI Data Analyst** that converts business questions into secure, validated SQL, deterministically computes analytical metrics and interactive charts, and delivers grounded, consulting-style executive narratives.
+## Demo
 
-Built with a **single-agent LangGraph state machine**, strict **`sqlglot` AST security parsing**, **read-only SQLite query sandboxing**, and **durable session checkpoints (`SqliteSaver`)**.
+- Streamlit interface: [genaidataanalystagent.streamlit.app](https://genaidataanalystagent.streamlit.app/)
+- FastAPI API: run locally with the setup below. The former EC2 demo may be stopped, so the local setup is the dependable demo path.
+- Example: ask “What is the average monthly charge by contract?” and inspect the generated SQL, returned table, chart, and explanation.
 
-🔗 [Live Streamlit App](https://genaidataanalystagent.streamlit.app/)  
-🔗 [Live FastAPI Docs (AWS EC2)](http://13.203.201.200:8000/docs)  
-🔗 [API Health Check](http://13.203.201.200:8000/health)
+## Architecture
 
----
+The application uses a single LangGraph workflow:
 
-## 🎯 Architecture & Design Philosophy
+1. Check the caller's access to the selected dataset and inspect its schema.
+2. Plan the analysis and look up approved business terms in a glossary.
+3. Generate a SQLite `SELECT` statement, validate it with `sqlglot`, and execute it against a read-only database connection with a timeout and row limit.
+4. Retry recoverable SQL errors at most twice, then calculate insights in Python and generate a response grounded in those facts.
 
-The system strictly divides responsibilities between **Probabilistic LLM Reasoning** and **Deterministic Code Execution**:
+FastAPI serves the backend, Streamlit provides the interface, SQLite stores uploaded data and graph checkpoints, and optional Langfuse tracing records stage timings and provider token usage. Traces omit user questions, SQL, and database rows.
 
-```
-                       ┌────────────────────────────────────────────────────────┐
-                       │               User Query via Streamlit UI             │
-                       └───────────────────────────┬────────────────────────────┘
-                                                   │ POST /query (session_id, dataset_id)
-                                                   ▼
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       LANGGRAPH STATE MACHINE                                          │
-│                                                                                                        │
-│   ┌───────────────────────────┐         ┌───────────────────────────┐         ┌────────────────────┐   │
-│   │   analyzer_planner_node   │ ──────> │    sql_generator_node     │ ──────> │ sql_validator_node │   │
-│   │   - Intent classification │         │   - Few-shot schema prompt│         │ - sqlglot AST check│   │
-│   │   - Glossary RAG lookup   │         │   - Scoped column mapping │         │ - DDL/DML rejection│   │
-│   │   - Ambiguity detection   │         │   - Dialect: SQLite       │         │ - Wildcard block   │   │
-│   └─────────────┬─────────────┘         └───────────────────────────┘         └─────────┬──────────┘   │
-│                 │                                                                       │              │
-│       [Ambiguous / Out-of-Scope]                                                 [Pass / Fail]         │
-│                 │                                                                  /        \          │
-│                 ▼                                                  ┌──────────────┐          ▼         │
-│       needs_clarification / rejected                               │ query_exec   │     repair_node    │
-│                                                                    │ - Read-only  │     (Max 2 retries)│
-│                                                                    │ - 10s deadline      ▲             │
-│                                                                    └──────┬───────┘      │             │
-│                                                                           │              │             │
-│                                                            [Syntax/Runtime Error]────────┘             │
-│                                                                           │                            │
-│                                                                    [Rows Returned]                     │
-│                                                                           │                            │
-│                                                                           ▼                            │
-│                                                            ┌──────────────────────────────┐            │
-│                                                            │   analytics_insights_node    │            │
-│                                                            │   - Pandas KPI calculations  │            │
-│                                                            │   - Plotly chart selection   │            │
-│                                                            └──────────────┬───────────────┘            │
-│                                                                           │                            │
-│                                                                           ▼                            │
-│                                                            ┌──────────────────────────────┐            │
-│                                                            │   narrative_explainer_node   │            │
-│                                                            │   - Grounded executive memo  │            │
-│                                                            │   - Metric hallucination check│            │
-│                                                            └──────────────────────────────┘            │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+## Results
 
-### 1. LLM Reasoning (Probabilistic)
-* **Intent & Ambiguity Detection:** Classifies analytical intent and identifies genuinely underspecified questions before touching databases.
-* **Domain Glossary RAG:** Matches business acronyms (e.g., `ARPU`, `Churn Rate`, `High Value Customer`) to concrete database columns and formulas.
-* **SQL Generation & Bounded Self-Repair:** Generates clean SQLite queries. If execution or validation errors occur, it diagnoses errors and repairs SQL (strictly bounded to $\le 2$ repair retries, 3 attempts total).
-* **Executive Explanations:** Synthesizes business context, observations, and recommendations grounded strictly in computed facts.
+- The original recorded 40-case live benchmark was **38/40 (95%)** under two mismatched expectations. After correcting those expectations, deterministic fixture replay is **40/40**; this replays saved SQL and is not a new live-model accuracy score.
+- The separate 20-case held-out fixture replay is **20/20** for its SQL and contract checks. This is a deterministic replay, not a fresh live-model score or proof of generalization.
+- The two corrected cases are documented in [`specs/failure_analysis.md`](specs/failure_analysis.md): a valid zero-count aggregate and a request that correctly asks for clarification because it omits an aggregation.
+- A live 40-query development telemetry run completed successfully on the synthetic Telco fixture: 0/40 run errors, 3,065 mean provider-reported tokens/query, and estimated mean cost of $0.00053605/query. Stage p50/p95 results and call counts are in [`backend/eval/eval_report.md`](backend/eval/eval_report.md). These timings are from one run, not an SLA.
+- Per-stage latency and token reports require a live provider run: `python backend/eval/latency_report.py --split development --limit 1 --live`. Remove `--limit 1` to run the full split. Live runs consume provider quota.
 
-### 2. Deterministic Code (Grounded Fact Verification)
-* **`sqlglot` AST Security Policy:** Analyzes query Abstract Syntax Trees before execution. Blocks all DDL/DML (`DROP`, `INSERT`, `UPDATE`, `ALTER`, `ATTACH`), stacked statements (`;`), system PRAGMAs, and open `SELECT *` wildcards.
-* **Read-Only SQLite Execution:** Queries run against URI connection strings in `mode=ro` with an active `progress_handler` timeout (10-second hard deadline).
-* **Statistical Insights Engine:** Computes SUM, AVG, MIN, MAX, standard deviation, percentage contributions, and trend shapes deterministically in Pandas.
-* **Chart Routing:** Selects bar, line, scatter, KPI card, or tabular views using deterministic data shape rules.
-* **Grounded Narrative Fallback:** Replaces or rejects generated text if the LLM invents numbers not present in the deterministic facts.
+## Setup
 
----
+Requirements: Python 3.11+, Docker (optional), and a Groq API key for live model responses.
 
-## 🚦 Exactly 5 Terminal Statuses
+### Local backend and interface
 
-Every execution terminates in one of five well-defined contract states:
-
-| Status | Meaning | Typical Trigger |
-|---|---|---|
-| `success` | Valid SQL executed, deterministic insights computed, grounded narrative generated. | Clean analytical query. |
-| `empty` | Valid SQL executed without errors, but returned 0 rows. | Strict filters (e.g., `MonthlyCharges > 10000`). |
-| `needs_clarification` | Query is ambiguous or underspecified; requests user input. | *"Show me the best one"* (no metric or dimension specified). |
-| `rejected` | Security violation, destructive DDL/DML, stacked statement, or out-of-scope query. | *"DROP TABLE customers"*, *"What is the weather in Paris?"* |
-| `failed` | Max repair budget exhausted ($3$ attempts) or unrecoverable system exception. | Invalid table join unresolvable after 2 repair retries. |
-
----
-
-## 🏆 Evaluation Benchmark & Scorecard
-
-Evaluated against a **40-Question End-to-End Test Suite** (`backend/eval/eval_suite.py`) spanning 6 analytical categories on real-world Telco Churn and Sales data. The benchmark implements a **two-tier grading methodology**:
-1. **Tier 1 (Contract Compliance):** Verifies that the agent terminates in the expected contract status (`success`, `empty`, `needs_clarification`, `rejected`).
-2. **Tier 2 (Semantic Data Validation):** Checks result set row counts against expected bounds, ensures analytical queries return non-empty datasets, verifies empty queries return strictly 0 rows, and requires self-repair cases to achieve full query recovery.
-
-| Category | Cases | Passed | Accuracy (%) | Key Finding |
-|---|---:|---:|---:|---|
-| **1. Aggregations, Grouping & Ranking** | 12 | 12 | **100%** | Valid SQL generation without `SELECT *`. Groupings and aggregations match schema. |
-| **2. Dates & Comparison Arithmetic** | 6 | 6 | **100%** | Numerical comparison boundaries (`between`, `>=`, `<=`) correctly parsed. |
-| **3. Glossary RAG & Multi-Turn Follow-Ups** | 6 | 6 | **100%** | Follow-up context (`prior_context`) preserved across turns. Glossary definitions applied accurately. |
-| **4. Ambiguity, Empty Results & Rejections** | 6 | 5 | **83.3%** | Ambiguous questions trigger `needs_clarification`. Non-analytical questions rejected. |
-| **5. SQL Safety & Access Isolation** | 6 | 6 | **100%** | `DROP TABLE`, stacked statements, `DELETE`, `UPDATE`, wildcards (`SELECT *`), and unauthorized tables blocked by AST. |
-| **6. Repair Recovery & Edge Cases** | 4 | 3 | **75.0%** | Recovered from schema column misalignments; bounded to 2 retries. |
-| **TOTAL** | **40** | **38** | **95.0%** | Verified against two-tier contract and semantic assertions. |
-
-### Key Improvements Over Baseline
-1. **Security:** Malicious queries like `DROP TABLE data` are blocked at the AST validator (`rejected`), preventing data manipulation or erratic fallback queries.
-2. **Multi-Turn Memory:** Conversational follow-ups (*"Filter that only for Fiber optic"* or *"Break that down by Contract"*) resolve using prior turn SQL and filters via durable `SqliteSaver` checkpoints.
-3. **Domain Glossary:** Acronyms like `ARPU` or `churn rate` resolve to verified database column formulas rather than hallucinated column names.
-4. **Grounded Fact Verification:** Numbers reported in the executive summary are deterministically validated against Pandas computations, reverting to deterministic facts if ungrounded numerical claims are detected.
-5. **Dataset Isolation & Truncation Guardrails:** Uploads receive distinct dataset IDs and table namespaces; queries capped at 1,000 rows carry explicit truncation warnings through the state machine to prevent partial-data misinterpretation.
-
----
-
-## 📁 Repository Structure
-
-```
-data_analyst_agent/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                     # GitHub Actions CI (runs 24 offline tests + eval replay)
-├── backend/
-│   ├── app/
-│   │   ├── agent/
-│   │   │   ├── graph.py               # LangGraph state machine & SqliteSaver persistence
-│   │   │   ├── nodes.py               # Planner, SQL generator, validator, repair, insights, narrative
-│   │   │   ├── state.py               # Typed Pydantic models (AgentState, QueryRequest, QueryResponse)
-│   │   │   └── tools.py               # Structured LLM tool schemas & fallback parsers
-│   │   ├── core/
-│   │   │   ├── auth.py                # HMAC-SHA256 JWT authentication & principal identity derivation
-│   │   │   ├── dataset_registry.py    # Multi-tenant dataset tracking, authorization & size caps
-│   │   │   ├── logger.py              # Structured JSON logging
-│   │   │   ├── rate_limiter.py        # Sliding-window rate limiter (20 req / 60s)
-│   │   │   ├── schema_inspector.py    # SQLite table and column introspection
-│   │   │   ├── sql_validator.py       # sqlglot AST security parser
-│   │   │   └── utils.py               # Column type detection & date coercion
-│   │   ├── services/
-│   │   │   ├── glossary.py            # SQLite-backed Business Glossary RAG
-│   │   │   ├── insights_engine.py     # Deterministic Pandas metrics & Plotly chart logic
-│   │   │   ├── query_executor.py      # Read-only SQLite executor with 10s deadline
-│   │   │   └── providers/
-│   │   │       ├── base.py            # LLMProvider abstract interface
-│   │   │       └── groq_provider.py   # Groq provider with structured JSON mode & token accounting
-│   │   └── main.py                    # FastAPI application & REST endpoints
-│   ├── eval/
-│   │   ├── fixtures/                  # Benchmark datasets (telco_churn_data.csv)
-│   │   ├── benchmark_results.json     # Recorded 40-case evaluation run (openai/gpt-oss-120b)
-│   │   ├── offline_replay_results.json# Deterministic offline replay output (38/40, 95.0%)
-│   │   ├── generate_fixtures.py       # Deterministic fixture generator
-│   │   ├── eval_report.md             # Benchmark report, latency provenance, & failure analysis
-│   │   └── eval_suite.py              # 40-question automated evaluation runner (--replay / --live)
-│   ├── rag/                           # Legacy/deferred v1 vector RAG prototype (unused by active agent)
-│   ├── tests/                         # Automated test suite (24 passing offline tests, 5 live tests)
-│   │   ├── test_auth_and_isolation.py # Signed JWT verification & cross-tenant dataset isolation
-│   │   ├── test_offline_eval_replay.py# Pytest test wrapping the 40-case offline replay
-│   │   ├── test_offline_regressions.py# Grounding verification, scalar checks, size limits
-│   │   └── test_t04_provider.py ...   # Unit & integration tests with explicit live test skipping
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── app.py                         # Modern Streamlit UI with real-time progress timeline
-│   ├── Dockerfile
-│   └── requirements.txt
-├── specs/001-agentic-analyst/
-│   ├── constitution.md                # System invariants & architectural contracts
-│   ├── contracts.md                   # API & state schema specifications
-│   ├── evaluation_report.md           # 40-question benchmark report & latency breakdown
-│   ├── baseline_report.md             # Flaws and benchmark of legacy system
-│   └── tasks.md                       # Implementation ledger & verification evidence
-├── docs/
-│   └── deployment_guide.md            # AWS EC2 / Docker deployment runbook
-├── docker-compose.yml
-├── .env.example
-└── Readme.md
-```
-
----
-
-## ⚡ Quickstart Guide
-
-### Option 1: Docker Compose (Recommended)
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/omrohitchannoji/GenAI_Data_Analyst_Agent.git
-   cd GenAI_Data_Analyst_Agent
-   ```
-
-2. **Configure Environment Variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and insert your GROQ_API_KEY
-   ```
-
-3. **Start backend and frontend services:**
-   ```bash
-   docker-compose up --build
-   ```
-
-4. **Access the application:**
-   * **Streamlit UI:** `http://localhost:8501`
-   * **FastAPI Docs:** `http://localhost:8000/docs`
-   * **Health Check:** `http://localhost:8000/health`
-
----
-
-### Option 2: Local Development
-
-#### Prerequisites
-* Python 3.11+
-* Active [Groq Cloud API Key](https://console.groq.com/)
-
-#### 1. Backend Setup
 ```bash
 cd backend
 python -m venv venv
-
-# Windows:
-.\venv\Scripts\activate
-# Linux/macOS:
-source venv/bin/activate
-
+# Windows: .\venv\Scripts\activate
+# macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in `backend/` (or repository root):
-```env
-GROQ_API_KEY=gsk_your_actual_groq_key_here
-GROQ_MODEL=openai/gpt-oss-120b
-DATASET_DIR=data
-DB_PATH=uploaded_data.db
-CHECKPOINT_DB_PATH=agent_checkpoints.db
-LOG_LEVEL=INFO
-```
+Copy `backend/.env.example` to `backend/.env`, then set `GROQ_API_KEY`. For JWT issuance, set a unique `AUTH_SECRET_KEY` and configure the accounts in `AUTH_USERS_JSON`; no built-in demo passwords are provided. `ALLOW_DEMO_ANONYMOUS=true` uses a shared identity and is only suitable for a public demo without private datasets. To enable Langfuse, set `LANGFUSE_ENABLED=true` and add the public and secret keys from your Langfuse project. Keep secret values out of source control.
 
-Start the FastAPI server:
+Start the API from `backend/`:
+
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### 2. Frontend Setup
-In a new terminal window:
+In another terminal, install `frontend/requirements.txt` and run `streamlit run frontend/app.py --server.port 8501` from the repository root. Alternatively, configure the environment files and use `docker compose up --build`.
+
+### Deterministic evaluation
+
+These commands use local fixtures and make no model API calls:
+
 ```bash
-cd frontend
-python -m venv venv
-
-# Windows:
-.\venv\Scripts\activate
-# Linux/macOS:
-source venv/bin/activate
-
-pip install -r requirements.txt
+python backend/eval/eval_suite.py --replay
+python backend/eval/eval_suite.py --held-out-replay
 ```
 
-Start Streamlit:
-```bash
-streamlit run app.py --server.port 8501
-```
-
----
-
-## 🧪 Running the Test Suite & Evaluation
-
-The repository includes a targeted test suite covering security AST parsing, database isolation, signed token authentication, and grounded fact verification:
-
-### 1. Offline Test Suite (Zero External Credentials Required)
-Runs all 24 unit, security, and offline regression tests. Live Groq tests explicitly skip with informative reasons:
-```bash
-# Run from repository root
-pytest backend/tests/ -v -rs
-```
-
-### 2. 40-Case Evaluation Suite
-
-- **Offline Deterministic Replay (Recommended for CI / Local Review):**
-  Replays recorded model outputs against local benchmark database fixtures (`backend/eval/fixtures/eval_benchmark.db`), exercising real AST validation, SQLite execution, and two-tier contract compliance without API calls:
-  ```bash
-  python backend/eval/eval_suite.py --replay
-  ```
-  *Result: 38/40 Passed (95.0%). Replay completes deterministically in <2 seconds.*
-
-- **Live Model Evaluation (Requires Groq API Key):**
-  Executes full end-to-end turns against the live Groq LLM API (`openai/gpt-oss-120b`):
-  ```bash
-  python backend/eval/eval_suite.py --live
-  ```
-  *Provenance: Recorded benchmark on 2026-09-29 achieved 38/40 (95.0%) with average turn latency of 19.69s (p50: 22.02s, p95: 30.21s).*
-
----
-
-## 🔄 Continuous Integration (GitHub Actions)
-
-A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`:
-1. Sets up Python 3.11 and installs project dependencies from `backend/requirements.txt`.
-2. Executes `pytest backend/tests/ -v -rs` (24 offline tests passing, live tests cleanly skipped).
-3. Executes `python backend/eval/eval_suite.py --replay` (verifies 38/40 benchmark score deterministically).
-
----
-
-## 🛡️ Security & Guardrails
-
-1. **AST Validation vs. Regex:** Traditional regex checks (`if "DROP" in query`) are trivially bypassed by comments or string literals (e.g. `WHERE status = 'DROPPED'`). This agent uses `sqlglot` to parse the Abstract Syntax Tree, strictly permitting only `Select` and `CTE` roots.
-2. **SQLite Read-Only Pragmas:** The database file is opened with `file:...mode=ro` flags. Even if a statement bypassed AST checks, the SQLite storage engine raises an operational error on any write operation.
-3. **Execution Deadlines:** Large cross-joins or infinite query loops are interrupted via SQLite's `set_progress_handler` every 10,000 instructions, terminating execution if runtime exceeds 10 seconds.
-4. **Row Truncation & State Propagation:** Result sets exceeding 1,000 rows are capped for serialization and display. Explicit `is_truncated` state flags and UI warnings prevent partial results from being misinterpreted as full-dataset statistics.
-5. **Signed-Token Authentication & Tenant Isolation:** User identity is established via HMAC-SHA256 signed JWT bearer tokens (`/auth/token`). The identity boundary derives `principal_id` strictly from cryptographically verified token claims (`sub`); raw client headers like `x-principal-id` are ignored to prevent header spoofing. Datasets in `dataset_registry.db` are isolated per principal. For local/demo environments, requests without tokens fall back to `"demo_user"` when `ALLOW_DEMO_ANONYMOUS=true`.
-6. **Dataset Isolation & Upload Limits:** File uploads are enforced with a 10 MiB size limit before memory ingestion and partitioned into unique dataset IDs and isolated SQLite tables.
-7. **Unified SQL Protections:** All SQL execution pathways (including direct `/run_sql` endpoints) run through the AST-guarded, read-only executor.
-8. **Rate Limiting:** Sliding-window in-memory rate limiter enforces 20 requests per 60-second window per IP.
-
----
-
-## 💡 Key Design Decisions & Interview FAQ
-
-### Why LangGraph instead of Multi-Agent Swarms (AutoGen / CrewAI)?
-Multi-agent swarms introduce compounding non-determinism, unpredictable token consumption, and complex debugging surfaces for a single-domain task. This project uses a **single-agent cyclic state machine (LangGraph)** with explicit conditional edges (`should_repair`, `route_intent`). State is strictly typed, transitions are deterministic, and repair loops are capped at 2 iterations.
-
-### Why not execute raw Python code generated by the LLM?
-Executing arbitrary Python code generated by an LLM in an analytical app is a major remote code execution (RCE) risk requiring complex gVisor or Docker sandboxes. By restricting the LLM to **pure SQL generation** validated via AST, and running **deterministic Pandas calculations** in the host runtime, the system achieves defense-in-depth security, deterministic reproducibility, and auditable verification.
-
-### How are multi-turn conversations handled?
-User conversations are identified by `session_id`. The LangGraph workflow persists states via an SQLite checkpointer (`SqliteSaver`). When a follow-up query is received (e.g., *"Filter only for contract month-to-month"*), the planner inspects `prior_context` and reformulates the SQL using the previous query's dimensions and filters. Switching datasets automatically clears prior context to prevent cross-dataset contamination.
-
----
-
-## 📄 License
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+The detailed design and implementation records are in [`docs/specs/001-agentic-analyst/`](docs/specs/001-agentic-analyst/).
