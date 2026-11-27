@@ -211,6 +211,31 @@ st.markdown(
         border-bottom-color: var(--da-emerald) !important;
     }
 
+    /* ---- File Uploader Dropzone (Fix Brown Box Tint) ---- */
+    section[data-testid="stFileUploaderDropzone"],
+    div[data-testid="stFileUploaderDropzone"] {
+        background-color: var(--da-surface) !important;
+        border: 1px dashed var(--da-border-accent) !important;
+        border-radius: 14px !important;
+        padding: 18px 20px !important;
+        color: var(--da-text-secondary) !important;
+        transition: border-color 0.18s ease, background-color 0.18s ease;
+    }
+
+    section[data-testid="stFileUploaderDropzone"]:hover,
+    div[data-testid="stFileUploaderDropzone"]:hover {
+        background-color: var(--da-surface-2) !important;
+        border-color: var(--da-emerald) !important;
+    }
+
+    section[data-testid="stFileUploaderDropzone"] button,
+    div[data-testid="stFileUploaderDropzone"] button {
+        background: var(--da-surface-2) !important;
+        color: var(--da-emerald-light) !important;
+        border: 1px solid var(--da-border-accent) !important;
+        box-shadow: none !important;
+    }
+
     /* ---- Cards & Containers ---- */
     .panel-title {
         font-size: 0.95rem;
