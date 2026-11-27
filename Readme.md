@@ -6,7 +6,9 @@ A conversational text-to-SQL assistant that turns business questions into read-o
 
 - Streamlit interface: [genaidataanalystagent.streamlit.app](https://genaidataanalystagent.streamlit.app/)
 - FastAPI API: run locally with the setup below. The former EC2 demo may be stopped, so the local setup is the dependable demo path.
-- Example: ask “What is the average monthly charge by contract?” and inspect the generated SQL, returned table, chart, and explanation.
+- **Try it:** choose Shared Demo Mode, upload [`backend/eval/fixtures/telco_churn_data.csv`](backend/eval/fixtures/telco_churn_data.csv), then ask “What is the average monthly charge by contract?” Inspect the generated SQL, result table, chart, and explanation.
+- **Hosted app requirement:** the Streamlit deployment must have `BACKEND_URL` set to a reachable FastAPI service. Without it, the page may load while uploads and queries fail; the code's default `localhost` address is only useful when running both services locally.
+- Shared Demo Mode uses one shared identity and has no per-user dataset isolation. Use only synthetic or public data in that mode.
 
 ## Architecture
 
@@ -17,7 +19,7 @@ The application uses a single LangGraph workflow:
 3. Generate a SQLite `SELECT` statement, validate it with `sqlglot`, and execute it against a read-only database connection with a timeout and row limit.
 4. Retry recoverable SQL errors at most twice, then calculate insights in Python and generate a response grounded in those facts.
 
-FastAPI serves the backend, Streamlit provides the interface, SQLite stores uploaded data and graph checkpoints, and optional Langfuse tracing records stage timings and provider token usage. Traces omit user questions, SQL, and database rows.
+FastAPI serves the backend, Streamlit provides the interface, and SQLite stores uploaded data, dataset ownership metadata, and graph checkpoints. Authenticated Mode issues HS256 JWTs from server-configured accounts and scopes datasets to the verified principal. Shared Demo Mode deliberately uses a common identity without tenant isolation. Optional Langfuse tracing records stage timings and provider token usage; traces omit user questions, SQL, and database rows.
 
 ## Results
 
@@ -34,6 +36,10 @@ Requirements: Python 3.11+, Docker (optional), and a Groq API key for live model
 ### Local backend and interface
 
 ```bash
+# From the repository root, create the backend environment file first.
+cp backend/.env.example backend/.env
+# Windows PowerShell alternative: Copy-Item backend\.env.example backend\.env
+
 cd backend
 python -m venv venv
 # Windows: .\venv\Scripts\activate
@@ -41,7 +47,7 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-Copy `backend/.env.example` to `backend/.env`, then set `GROQ_API_KEY`. For JWT issuance, set a unique `AUTH_SECRET_KEY` and configure the accounts in `AUTH_USERS_JSON`; no built-in demo passwords are provided. `ALLOW_DEMO_ANONYMOUS=true` uses a shared identity and is only suitable for a public demo without private datasets. To enable Langfuse, set `LANGFUSE_ENABLED=true` and add the public and secret keys from your Langfuse project. Keep secret values out of source control.
+Set `GROQ_API_KEY` in `backend/.env`. For Authenticated Mode, also set a unique `AUTH_SECRET_KEY` and configure accounts in `AUTH_USERS_JSON`; no built-in demo passwords are provided. Shared Demo Mode is enabled by default and is suitable only for synthetic or public data. To enable Langfuse, set `LANGFUSE_ENABLED=true` and add the public and secret keys from your Langfuse project. Keep secret values out of source control.
 
 Start the API from `backend/`:
 
@@ -50,6 +56,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 In another terminal, install `frontend/requirements.txt` and run `streamlit run frontend/app.py --server.port 8501` from the repository root. Alternatively, configure the environment files and use `docker compose up --build`.
+
+For a local browser UI, the default `BACKEND_URL` is `http://localhost:8000`. The FastAPI interactive API docs are at `http://localhost:8000/docs`.
 
 ### Deterministic evaluation
 
