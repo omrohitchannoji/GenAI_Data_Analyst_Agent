@@ -211,7 +211,7 @@ st.markdown(
         border-bottom-color: var(--da-emerald) !important;
     }
 
-    /* ---- File Uploader Dropzone (Fix Brown Box Tint) ---- */
+    /* ---- File Uploader Dropzone ---- */
     section[data-testid="stFileUploaderDropzone"],
     div[data-testid="stFileUploaderDropzone"] {
         background-color: var(--da-surface) !important;
@@ -245,47 +245,6 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 8px;
-    }
-
-    .schema-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-        gap: 8px;
-        max-height: 320px;
-        overflow-y: auto;
-        padding-right: 4px;
-    }
-
-    .schema-item {
-        background: var(--da-surface-2);
-        border: 1px solid var(--da-border);
-        border-radius: 9px;
-        padding: 8px 11px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .schema-col {
-        font-family: var(--da-mono);
-        font-size: 0.78rem;
-        color: var(--da-text);
-        font-weight: 600;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .schema-dtype {
-        font-family: var(--da-mono);
-        font-size: 0.69rem;
-        color: var(--da-cyan);
-        background: rgba(6, 182, 212, 0.1);
-        border: 1px solid rgba(6, 182, 212, 0.22);
-        padding: 2px 7px;
-        border-radius: 5px;
-        white-space: nowrap;
     }
 
     /* ---- KPI Metric Cards ---- */
@@ -523,27 +482,50 @@ with tab1:
         col_types = data.get("column_types", {})
         preview_rows = data.get("preview", [])
 
+        if isinstance(col_types, dict) and col_types and isinstance(next(iter(col_types.values())), list):
+            total_cols = sum(len(v) for v in col_types.values())
+        else:
+            total_cols = len(col_types) if isinstance(col_types, dict) else len(pd.DataFrame(preview_rows).columns)
+
         st.success(
-            f"✅ Registered **{data.get('filename')}** · Dataset ID: `{st.session_state['dataset_id']}` · {len(col_types)} columns detected"
+            f"✅ Registered **{data.get('filename')}** · Dataset ID: `{st.session_state['dataset_id']}` · {total_cols} columns detected"
         )
 
-        c1, c2 = st.columns([1.35, 1])
+        c1, c2 = st.columns([1.4, 1])
         with c1:
             st.markdown('<div class="panel-title">🔍 Data Preview (First 20 Rows)</div>', unsafe_allow_html=True)
             st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+
         with c2:
             st.markdown('<div class="panel-title">🧬 Detected Schema</div>', unsafe_allow_html=True)
-            if col_types:
-                schema_cards = "".join(
-                    f"""
-                    <div class="schema-item">
-                        <span class="schema-col" title="{col}">{col}</span>
-                        <span class="schema-dtype">{dtype}</span>
-                    </div>
-                    """
-                    for col, dtype in col_types.items()
+            if isinstance(col_types, dict) and col_types:
+                schema_rows = []
+                first_val = next(iter(col_types.values()))
+
+                if isinstance(first_val, list):
+                    for dtype_group, cols in col_types.items():
+                        for col_name in cols:
+                            schema_rows.append(
+                                {
+                                    "Column": col_name,
+                                    "Detected Type": dtype_group.upper(),
+                                }
+                            )
+                else:
+                    for col_name, dtype_val in col_types.items():
+                        schema_rows.append(
+                            {
+                                "Column": col_name,
+                                "Detected Type": str(dtype_val).upper(),
+                            }
+                        )
+
+                st.dataframe(
+                    pd.DataFrame(schema_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=360,
                 )
-                st.markdown(f'<div class="schema-grid">{schema_cards}</div>', unsafe_allow_html=True)
             else:
                 st.caption("No column type metadata returned.")
 
