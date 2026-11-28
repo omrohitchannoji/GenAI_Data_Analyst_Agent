@@ -1,4 +1,4 @@
-"""Privacy-conscious local telemetry and optional Langfuse tracing."""
+"""Privacy-conscious telemetry with required Langfuse tracing."""
 
 from __future__ import annotations
 
@@ -64,7 +64,8 @@ def sanitize_telemetry_payload(data: Any, opt_in: bool = CAPTURE_CONTENT_OPT_IN)
 
 
 def langfuse_enabled() -> bool:
-    return os.environ.get("LANGFUSE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    """Langfuse is mandatory; a false setting is treated as a configuration error."""
+    return os.environ.get("LANGFUSE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 _LANGFUSE_CLIENT = None
@@ -72,28 +73,27 @@ _LANGFUSE_CLIENT_INITIALIZED = False
 
 
 def get_langfuse_client():
-    """Lazily initialize Langfuse; missing configuration keeps the app usable offline."""
+    """Lazily initialize the required Langfuse client or fail with actionable config errors."""
     global _LANGFUSE_CLIENT, _LANGFUSE_CLIENT_INITIALIZED
     if not langfuse_enabled():
-        return None
+        raise RuntimeError("Langfuse tracing is required. Set LANGFUSE_ENABLED=true.")
     if _LANGFUSE_CLIENT_INITIALIZED:
         return _LANGFUSE_CLIENT
 
-    _LANGFUSE_CLIENT_INITIALIZED = True
     public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "").strip()
     secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
     host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").strip()
     if not public_key or not secret_key:
-        logger.warning("Langfuse is enabled but credentials are missing; tracing is disabled.")
-        return None
+        raise RuntimeError("Langfuse tracing is required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY.")
 
     try:
         from langfuse import Langfuse
 
         _LANGFUSE_CLIENT = Langfuse(public_key=public_key, secret_key=secret_key, base_url=host)
-    except Exception as exc:  # Telemetry must never prevent an analytical request.
-        logger.warning("Langfuse initialization failed (%s); tracing is disabled.", type(exc).__name__)
-        _LANGFUSE_CLIENT = None
+        _LANGFUSE_CLIENT_INITIALIZED = True
+    except Exception as exc:
+        _LANGFUSE_CLIENT_INITIALIZED = False
+        raise RuntimeError(f"Required Langfuse client could not initialize ({type(exc).__name__}).") from exc
     return _LANGFUSE_CLIENT
 
 
@@ -107,11 +107,10 @@ def langfuse_observation(
     model: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Iterator[Any]:
-    """Create a privacy-safe observation, falling back cleanly when unavailable."""
+    """Create a privacy-safe Langfuse observation; tracing errors are surfaced."""
     client = get_langfuse_client()
     if client is None:
-        yield None
-        return
+        raise RuntimeError("Required Langfuse client is unavailable.")
 
     kwargs: Dict[str, Any] = {
         "name": name,
@@ -130,9 +129,7 @@ def langfuse_observation(
         observation_context = client.start_as_current_observation(**kwargs)
         observation = observation_context.__enter__()
     except Exception as exc:
-        logger.warning("Langfuse observation could not start (%s).", type(exc).__name__)
-        yield None
-        return
+        raise RuntimeError(f"Required Langfuse observation '{name}' could not start ({type(exc).__name__}).") from exc
 
     try:
         yield observation
@@ -140,23 +137,23 @@ def langfuse_observation(
         try:
             observation_context.__exit__(type(exc), exc, exc.__traceback__)
         except Exception as trace_exc:
-            logger.warning("Langfuse observation close failed (%s).", type(trace_exc).__name__)
+            raise RuntimeError(f"Required Langfuse observation '{name}' could not close.") from trace_exc
         raise
     else:
         try:
             observation_context.__exit__(None, None, None)
         except Exception as exc:
-            logger.warning("Langfuse observation close failed (%s).", type(exc).__name__)
+            raise RuntimeError(f"Required Langfuse observation '{name}' could not close.") from exc
 
 
 def flush_langfuse() -> None:
     client = get_langfuse_client()
     if client is None:
-        return
+        raise RuntimeError("Required Langfuse client is unavailable.")
     try:
         client.flush()
     except Exception as exc:
-        logger.warning("Langfuse flush failed (%s).", type(exc).__name__)
+        raise RuntimeError("Required Langfuse telemetry flush failed.") from exc
 
 
 class NodeSpan(BaseModel):

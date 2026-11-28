@@ -288,38 +288,29 @@ def run_agent_turn(
 
     model_name = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
     client = get_langfuse_client()
-    if client is None:
-        final_state = active_graph.invoke(turn_state, config=config)
-    else:
-        with langfuse_observation(
-            "agent_turn",
-            metadata={"request_id": request_id, "model": model_name},
-        ) as root_observation:
-            if root_observation is None:
-                final_state = active_graph.invoke(turn_state, config=config)
-            else:
-                trace_id = client.get_current_trace_id()
-                root_span_id = client.get_current_observation_id()
-                trace_config = {"configurable": {
-                    "thread_id": thread_id,
-                    "_langfuse_trace_id": trace_id,
-                    "_langfuse_parent_observation_id": root_span_id,
-                }}
-                final_state = active_graph.invoke(turn_state, config=trace_config)
-                node_spans = final_state.get("node_spans", [])
-                llm_spans = [span for span in node_spans if span.get("model")]
-                token_usage_available = bool(llm_spans) and all(span.get("total_tokens") is not None for span in llm_spans)
-                metadata = {
-                    "status": final_state.get("terminal_status"),
-                    "model_calls": final_state.get("model_calls", 0),
-                    "repair_count": final_state.get("retry_count", 0),
-                    "node_count": len(node_spans),
-                    "total_tokens": sum(span["total_tokens"] for span in llm_spans) if token_usage_available else None,
-                }
-                try:
-                    root_observation.update(metadata=metadata)
-                except Exception as exc:
-                    logger.debug("Could not update Langfuse root metadata (%s).", type(exc).__name__)
+    with langfuse_observation(
+        "agent_turn",
+        metadata={"request_id": request_id, "model": model_name},
+    ) as root_observation:
+        trace_id = client.get_current_trace_id()
+        root_span_id = client.get_current_observation_id()
+        trace_config = {"configurable": {
+            "thread_id": thread_id,
+            "_langfuse_trace_id": trace_id,
+            "_langfuse_parent_observation_id": root_span_id,
+        }}
+        final_state = active_graph.invoke(turn_state, config=trace_config)
+        node_spans = final_state.get("node_spans", [])
+        llm_spans = [span for span in node_spans if span.get("model")]
+        token_usage_available = bool(llm_spans) and all(span.get("total_tokens") is not None for span in llm_spans)
+        metadata = {
+            "status": final_state.get("terminal_status"),
+            "model_calls": final_state.get("model_calls", 0),
+            "repair_count": final_state.get("retry_count", 0),
+            "node_count": len(node_spans),
+            "total_tokens": sum(span["total_tokens"] for span in llm_spans) if token_usage_available else None,
+        }
+        root_observation.update(metadata=metadata)
 
     # Compute aggregate telemetry summary
     node_spans = final_state.get("node_spans", [])

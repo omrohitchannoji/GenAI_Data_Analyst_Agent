@@ -63,13 +63,18 @@ newgrp docker
 git clone https://github.com/omrohitchannoji/GenAI_Data_Analyst_Agent.git
 cd GenAI_Data_Analyst_Agent
 
-# 4. Configure environment
-echo "GROQ_API_KEY=your_groq_api_key_here" > backend/.env
-echo "GROQ_MODEL=openai/gpt-oss-120b" >> backend/.env
+# 4. Configure environment without placing secrets in shell history
+cp backend/.env.example backend/.env
+nano backend/.env
+# Set GROQ_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
+# LANGFUSE_HOST, LANGFUSE_ENABLED=true, and a unique AUTH_SECRET_KEY
+chmod 600 backend/.env
 
-# 5. Start with persistent storage
+# 5. Start the application
 docker compose up -d --build
 ```
+
+Langfuse configuration is required: the backend will not start if tracing is disabled or its public/secret keys are missing. The EC2 host needs outbound HTTPS access to the configured Langfuse host (Cloud default: `https://cloud.langfuse.com`). Keep `backend/.env` on the instance only; do not commit it or paste secret values into deployment logs. After changing environment values or pulling a new application version, recreate the backend container with `docker compose up -d --build backend`, then confirm it is healthy and run a query to verify a trace appears in the Langfuse project.
 
 ---
 

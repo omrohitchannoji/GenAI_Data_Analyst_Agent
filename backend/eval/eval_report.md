@@ -15,7 +15,7 @@
 
 `latency_report.py` runs model requests only when `--live` is explicitly supplied. Live runs register and query only the synthetic Telco fixture, never the default uploaded-data database. It reports per-stage p50/p95 latency, repair-loop frequency, and tokens/query when all relevant provider calls returned usage data. It also reports cost only when the model has an explicit price in `MODEL_PRICING_TABLE` and token usage is complete. Unknown prices and missing token counts remain unavailable rather than being estimated.
 
-Langfuse tracing is optional and disabled by default. It records stage status, latency, model, and available token usage; query text, generated SQL, and database rows are not attached to Langfuse observations.
+Langfuse tracing is required by the backend and must be configured before startup. It records stage status, latency, model, and available token usage; query text, generated SQL, and database rows are not attached to Langfuse observations. Evaluation replays that do not start the backend remain deterministic and do not require Langfuse credentials.
 
 The explicit cost table in `backend/app/core/telemetry.py` uses Groq's published per-million-token rates for GPT-OSS 120B and 20B, including the documented cached-input rate. Cost remains unavailable when cached-token counts or token usage are missing. [Groq model rates](https://console.groq.com/docs/models) · [Prompt-cache usage fields](https://console.groq.com/docs/prompt-caching).
 

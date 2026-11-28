@@ -20,13 +20,20 @@ from app.services.insights_engine import generate_insights_from_df
 from app.services.llm_charts import llm_chart_recommendation
 from app.services.llm_dataset_summary import generate_dataset_summary
 from app.services.query_executor import execute_query_safely
-from app.core.auth import get_current_principal, create_access_token, authenticate_credentials
+from app.core.auth import get_current_principal, create_access_token, authenticate_credentials, verify_access_token
+from app.core.telemetry import get_langfuse_client
 import app_state
 
 # Simple in-memory conversation store (session_id -> list of dicts)
 conversation_memory = {}
 
 app = FastAPI(title="AI Data Analyst Agent")
+
+
+@app.on_event("startup")
+def require_langfuse_configuration():
+    """Fail startup when required Langfuse tracing is not configured."""
+    get_langfuse_client()
 
 app.add_middleware(
     CORSMiddleware,
@@ -280,7 +287,13 @@ async def upload_csv(request: Request, file: UploadFile = File(...)):
         return {"error": f"Failed to process CSV: {str(e)}"}
 
 @app.post("/run_sql")
-def run_sql_api(request: SQLRequest):
+def run_sql_api(request: SQLRequest, raw_req: Request):
+    auth_header = raw_req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Admin authentication required.")
+    claims = verify_access_token(auth_header[7:].strip())
+    if claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required.")
     df = run_sql_query(request.sql)
     if isinstance(df, str):
         return {"error": df}

@@ -4,6 +4,7 @@ import pytest
 import sqlite3
 import tempfile
 import json
+import pandas as pd
 
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, backend_dir)
@@ -112,6 +113,14 @@ def test_fail_closed_without_secret_key(monkeypatch):
     assert "misconfiguration" in exc_info.value.detail.lower()
 
 
+def test_short_secret_key_rejected(monkeypatch):
+    monkeypatch.setenv("AUTH_SECRET_KEY", "too-short")
+    with pytest.raises(HTTPException) as exc_info:
+        get_auth_secret_key()
+    assert exc_info.value.status_code == 500
+    assert "32 bytes" in exc_info.value.detail
+
+
 def test_auth_users_configuration_fails_closed(monkeypatch):
     monkeypatch.delenv("AUTH_USERS_JSON", raising=False)
     with pytest.raises(HTTPException) as exc_info:
@@ -154,6 +163,23 @@ def test_tampered_token_in_request_rejected(client):
         headers={"Authorization": "Bearer invalid.jwt.token"}
     )
     assert resp.status_code == 401
+
+
+def test_run_sql_requires_admin_token(client, monkeypatch):
+    route = "/run_sql"
+    payload = {"sql": "SELECT 1"}
+
+    assert client.post(route, json=payload).status_code == 401
+
+    analyst_token = create_access_token("analyst_alice", role="analyst")
+    analyst_response = client.post(route, json=payload, headers={"Authorization": f"Bearer {analyst_token}"})
+    assert analyst_response.status_code == 403
+
+    monkeypatch.setattr("app.main.run_sql_query", lambda _sql: pd.DataFrame({"ok": [1]}))
+    admin_token = create_access_token("admin_test", role="admin")
+    admin_response = client.post(route, json=payload, headers={"Authorization": f"Bearer {admin_token}"})
+    assert admin_response.status_code == 200
+    assert admin_response.json()["rows"] == [{"ok": 1}]
 
 
 def test_cross_tenant_dataset_isolation():

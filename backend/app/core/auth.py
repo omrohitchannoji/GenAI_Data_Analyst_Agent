@@ -43,7 +43,13 @@ def get_auth_secret_key() -> str:
             status_code=500,
             detail="Server security misconfiguration: AUTH_SECRET_KEY environment variable is required and cannot be empty."
         )
-    return secret.strip()
+    secret = secret.strip()
+    if len(secret.encode("utf-8")) < 32:
+        raise HTTPException(
+            status_code=500,
+            detail="Server security misconfiguration: AUTH_SECRET_KEY must be at least 32 bytes."
+        )
+    return secret
 
 def authenticate_credentials(username: str, password: str) -> Dict[str, str]:
     """
